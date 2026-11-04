@@ -98,7 +98,7 @@ button:active{ transform:scale(0.98); }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V1.7</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V1.8</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -258,6 +258,8 @@ button:active{ transform:scale(0.98); }
       <input type="text" id="catalog-search" placeholder="Buscar por código o nombre" style="margin-bottom:0;">
     </div>
 
+    <div class="card" id="catalog-barcode-alert" style="display:none;"></div>
+
     <div class="card">
       <h2>Registrar producto</h2>
       <p class="muted" style="margin-bottom:10px;">Elige cómo quieres registrar el producto:</p>
@@ -348,7 +350,7 @@ function showPage(pageName){
   if(pageName === 'despachos') renderDespachosList();
   if(pageName === 'recepciones') renderRecepcionesList();
   if(pageName === 'metricas') renderMetricas();
-  if(pageName === 'catalogo') renderCatalogList();
+  if(pageName === 'catalogo'){ catalogUI = { adding: null, confirm: null, msg: '', value: '' }; renderCatalogList(); }
   closeSidebar();
 }
 
@@ -919,29 +921,75 @@ function rowStyle(item){
   return { border:'var(--border)', bg:'var(--card)', count:'var(--text-secondary)' };
 }
 
+let pickEditCode = null; // línea con el editor de cantidad abierto
+
+// Unidades que suma cada escaneo de este producto (productos que vienen en paquetes de 5, 10, etc.)
+function getPackSize(code){
+  const p = productCatalog[code];
+  const n = p ? parseInt(p.packSize) : 0;
+  return n > 0 ? n : 1;
+}
+
 function renderPickRows(){
   const html = pickItems.map(item => {
     const s = rowStyle(item);
-    return '<div class="pick-row" style="border-color:'+s.border+'; background:'+s.bg+';">'
-      + '<div class="left"><div class="code">'+escapeAttr(item.code)+'</div><div class="name" title="'+escapeAttr(item.name)+'">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
+    const pack = getPackSize(item.code);
+    const packTag = pack > 1 ? ' <span class="badge badge-warning" style="margin-left:4px;">paq. ×' + pack + '</span>' : '';
+    const c = escapeAttr(item.code);
+    let editor = '';
+    if(pickEditCode === item.code){
+      editor = '<div style="border:1px solid var(--border); background:var(--card); border-radius:10px; padding:10px 12px; margin:-2px 0 6px;">'
+        + '<label class="muted" style="display:block; margin-bottom:2px;">Cantidad verificada (escribe el total contado)</label>'
+        + '<input type="number" min="0" id="pick-edit-picked" value="' + item.picked + '" style="margin-bottom:6px;">'
+        + '<label class="muted" style="display:block; margin-bottom:2px;">Unidades por paquete (cada escaneo suma esta cantidad)</label>'
+        + '<input type="number" min="1" id="pick-edit-pack" value="' + pack + '" style="margin-bottom:6px;">'
+        + '<div style="display:flex; gap:6px;"><button type="button" class="btn-primary" data-act="save-edit" data-code="' + c + '" style="flex:1;">Guardar</button>'
+        + '<button type="button" data-act="close-edit" data-code="' + c + '" style="flex:1;">Cerrar</button></div></div>';
+    }
+    return '<div class="pick-wrap">'
+      + '<div class="pick-row" style="border-color:'+s.border+'; background:'+s.bg+';">'
+      + '<div class="left"><div class="code">'+c+packTag+'</div><div class="name" title="'+escapeAttr(item.name)+'">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
       + '<div class="right">'
         + '<span class="count" style="color:'+s.count+';">'+item.picked+'/'+item.qty+'</span>'
-        + '<button type="button" class="minus-btn" data-code="'+escapeAttr(item.code)+'" aria-label="Quitar uno">−</button>'
+        + '<button type="button" class="minus-btn" data-act="minus" data-code="'+c+'" aria-label="Quitar ' + pack + '" title="Quitar ' + pack + '">−</button>'
+        + '<button type="button" class="minus-btn" data-act="plus" data-code="'+c+'" aria-label="Sumar ' + pack + '" title="Sumar ' + pack + '">+</button>'
+        + '<button type="button" class="minus-btn" data-act="edit" data-code="'+c+'" aria-label="Editar cantidad" title="Editar cantidad">✎</button>'
       + '</div>'
-    + '</div>';
+    + '</div>' + editor + '</div>';
   }).join('');
   document.getElementById('pick-rows').innerHTML = html;
 }
 
 document.getElementById('pick-rows').addEventListener('click', function(e){
-  const btn = e.target.closest('button[data-code]');
+  const btn = e.target.closest('button[data-act]');
   if(!btn) return;
-  const item = pickItems.find(i => i.code === btn.getAttribute('data-code'));
-  if(item && item.picked > 0){
-    item.picked -= 1;
-    renderPickRows();
-    updateStats();
+  const code = btn.getAttribute('data-code');
+  const item = pickItems.find(i => i.code === code);
+  if(!item) return;
+  const act = btn.getAttribute('data-act');
+  const step = getPackSize(code);
+
+  if(act === 'minus'){
+    if(item.picked > 0) item.picked = Math.max(0, item.picked - step);
+  } else if(act === 'plus'){
+    item.picked += step;
+  } else if(act === 'edit'){
+    pickEditCode = (pickEditCode === code) ? null : code;
+  } else if(act === 'close-edit'){
+    pickEditCode = null;
+  } else if(act === 'save-edit'){
+    const pickedVal = Math.max(0, parseInt(document.getElementById('pick-edit-picked').value) || 0);
+    const packVal = Math.max(1, parseInt(document.getElementById('pick-edit-pack').value) || 1);
+    item.picked = pickedVal;
+    if(packVal !== getPackSize(code)){
+      upsertProduct(code, item.name, '');
+      productCatalog[code].packSize = packVal;
+      saveProductCatalog();
+    }
+    pickEditCode = null;
   }
+  renderPickRows();
+  updateStats();
 });
 
 function updateStats(){
@@ -1089,13 +1137,15 @@ function handleScan(raw){
   }
 
   pendingUnknownCode = null;
-  item.picked += 1;
+  const step = getPackSize(item.code);
+  const stepTxt = step > 1 ? ' (+' + step + ' por paquete)' : '';
+  item.picked += step;
   if(item.picked > item.qty){
-    setFeedback('Exceso: ' + item.name + ' ya tenía ' + item.qty + ' pedidas, ahora van ' + item.picked + '.', 'var(--danger-text)');
+    setFeedback('Exceso: ' + item.name + stepTxt + ' — pedidas ' + item.qty + ', van ' + item.picked + '.' + (step > 1 ? ' Si abriste un paquete, ajusta con ✎.' : ''), 'var(--danger-text)');
   } else if(item.picked === item.qty){
-    setFeedback('Completo: ' + item.name + ' (' + item.picked + '/' + item.qty + ').', 'var(--success-text)');
+    setFeedback('Completo: ' + item.name + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--success-text)');
   } else {
-    setFeedback('Agregado: ' + item.name + ' (' + item.picked + '/' + item.qty + ').', 'var(--text-secondary)');
+    setFeedback('Agregado: ' + item.name + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--text-secondary)');
   }
   renderPickRows();
   updateStats();
@@ -1114,7 +1164,7 @@ document.getElementById('feedback-action').addEventListener('click', function(e)
     if(item){
       upsertProduct(targetCode, item.name, '');
       saveProductCatalog();
-      item.picked += 1;
+      item.picked += getPackSize(targetCode);
       renderPickRows();
       updateStats();
       setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + item.picked + '/' + item.qty + '). La próxima vez que escanees este código, ya lo va a reconocer solo.', 'var(--success-text)');
@@ -1487,7 +1537,8 @@ function renderCatalogStatus(){
     el.innerHTML = '';
     return;
   }
-  el.innerHTML = count + ' producto(s) en tu catálogo. <button type="button" id="go-to-catalog-btn" style="font-size:12px; padding:3px 8px;">Ver catálogo</button>';
+  const sinBarcode = Object.keys(productCatalog).filter(c => !(productCatalog[c].barcodes && productCatalog[c].barcodes.length)).length;
+  el.innerHTML = count + ' producto(s) en tu catálogo' + (sinBarcode > 0 ? ' (<b style="color:var(--danger-text);">' + sinBarcode + ' sin código de barras</b>)' : '') + '. <button type="button" id="go-to-catalog-btn" style="font-size:12px; padding:3px 8px;">Ver catálogo</button>';
 }
 
 document.getElementById('catalog-status').addEventListener('click', function(e){
@@ -2070,36 +2121,139 @@ document.getElementById('catalog-pdf-input').addEventListener('change', function
 });
 
 // --- Renderizado del catálogo ---
+// --- Catálogo: alerta de "sin código de barras", agregar código y eliminar con confirmación ---
+let catalogBarcodeFilter = 'all'; // 'all' | 'sin' | 'con'
+let catalogUI = { adding: null, confirm: null, msg: '', value: '' }; // tarjeta con formulario/confirmación abierta
+
+function catalogHasBarcode(code){
+  const p = productCatalog[code];
+  return !!(p && p.barcodes && p.barcodes.length);
+}
+
+function renderCatalogBarcodeAlert(){
+  const el = document.getElementById('catalog-barcode-alert');
+  const codes = Object.keys(productCatalog);
+  if(codes.length === 0){
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  const con = codes.filter(catalogHasBarcode).length;
+  const sin = codes.length - con;
+  const alertBox = sin > 0
+    ? '<div style="background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">⚠ <b>' + sin + ' producto(s) sin código de barras.</b> Toca «Sin código de barras» para verlos y asignarles el código uno por uno.</div>'
+    : '<div style="background:var(--success-bg); color:var(--success-text); border:1px solid var(--success-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">✓ Todos los productos del catálogo tienen código de barras.</div>';
+  const chip = function(key, label, n){
+    return '<button type="button" data-filter="' + key + '" class="toggle-btn' + (catalogBarcodeFilter === key ? ' active' : '') + '" style="flex:1; text-align:center; font-size:12px; padding:8px 4px; border:1px solid var(--border);">' + label + ' (' + n + ')</button>';
+  };
+  el.style.display = 'block';
+  el.innerHTML = '<h2 style="margin-bottom:8px;">Códigos de barras</h2>' + alertBox
+    + '<div style="display:flex; gap:6px;">' + chip('all', 'Todos', codes.length) + chip('sin', 'Sin código de barras', sin) + chip('con', 'Con código de barras', con) + '</div>';
+}
+
+function buildCatalogCard(code){
+  const p = productCatalog[code];
+  if(!p) return '';
+  const barcodes = p.barcodes || [];
+  const hasBarcode = barcodes.length > 0;
+  const badge = hasBarcode ? '' : '<span class="badge" style="background:var(--danger-bg); color:var(--danger-text); margin-left:6px; font-family:inherit;">Sin código de barras</span>';
+  const pack = parseInt(p.packSize) > 0 ? parseInt(p.packSize) : 1;
+  const barcodesInfo = hasBarcode
+    ? '<div class="muted" style="font-size:11px; margin-bottom:6px;">Códigos de barra: ' + barcodes.map(function(bc){
+        return '<span style="display:inline-block; margin-right:8px;">' + escapeAttr(bc)
+          + ' <button type="button" data-action="unlink-barcode" data-barcode="' + escapeAttr(bc) + '" aria-label="Quitar código de barras" style="padding:0 6px; font-size:11px; line-height:18px; color:var(--danger-text);">×</button></span>';
+      }).join('') + '</div>'
+    : '';
+
+  let actions;
+  const conf = catalogUI.confirm && catalogUI.confirm.code === code ? catalogUI.confirm : null;
+  if(conf && conf.kind === 'delete'){
+    actions = '<div style="margin-top:6px; background:var(--danger-bg); color:var(--danger-text); border:1px solid var(--danger-border); border-radius:8px; padding:10px;">'
+      + '<div style="font-size:13px; margin-bottom:8px;">¿Eliminar <b>' + escapeAttr(p.name || code) + '</b> (' + escapeAttr(code) + ') del catálogo? Se pierden también sus códigos de barras vinculados. Esta acción no se puede deshacer.</div>'
+      + '<div style="display:flex; gap:6px;"><button type="button" data-action="confirm-delete" style="flex:1; background:var(--danger-text); color:#fff; border-color:var(--danger-text);">Sí, eliminar</button>'
+      + '<button type="button" data-action="cancel-confirm" style="flex:1;">Cancelar</button></div></div>';
+  } else if(conf && conf.kind === 'unlink'){
+    actions = '<div style="margin-top:6px; background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:8px; padding:10px;">'
+      + '<div style="font-size:13px; margin-bottom:8px;">¿Quitar el código de barras <b>' + escapeAttr(conf.barcode) + '</b> de este producto?</div>'
+      + '<div style="display:flex; gap:6px;"><button type="button" data-action="confirm-unlink" style="flex:1;">Sí, quitar</button>'
+      + '<button type="button" data-action="cancel-confirm" style="flex:1;">Cancelar</button></div></div>';
+  } else if(catalogUI.adding === code){
+    actions = '<div style="margin-top:6px;">'
+      + '<label class="muted" style="display:block; margin-bottom:4px;">Escanea o escribe el código de barras y presiona Enter</label>'
+      + '<input type="text" id="catalog-barcode-input" autocomplete="off" placeholder="Código de barras" value="' + escapeAttr(catalogUI.value || '') + '" style="margin-bottom:6px;">'
+      + (catalogUI.msg ? '<p style="font-size:12px; color:var(--danger-text); margin-bottom:6px;">' + escapeAttr(catalogUI.msg) + '</p>' : '')
+      + '<div style="display:flex; gap:6px;"><button type="button" class="btn-primary" data-action="save-barcode" style="flex:1;">Guardar código</button>'
+      + '<button type="button" data-action="cancel-add" style="flex:1;">Cancelar</button></div></div>';
+  } else {
+    actions = '<div style="display:flex; gap:6px; margin-top:6px;">'
+      + '<button type="button" class="btn-secondary" data-action="add-barcode" style="flex:1;">Agregar código de barras</button>'
+      + '<button type="button" class="btn-secondary" data-action="delete-product" style="flex:1; color:var(--danger-text);">Eliminar del catálogo</button></div>';
+  }
+
+  return '<div class="despacho-card" data-code="' + escapeAttr(code) + '">'
+    + '<div class="title" style="font-family:monospace; font-size:13px;">' + escapeAttr(code) + badge + '</div>'
+    + '<input type="text" data-field="name" value="' + escapeAttr(p.name || '') + '" placeholder="Nombre del producto" style="margin-bottom:6px;">'
+    + '<input type="text" data-field="description" value="' + escapeAttr(p.description || '') + '" placeholder="Descripción / modelos" style="margin-bottom:6px;">'
+    + '<input type="text" data-field="location" value="' + escapeAttr(p.location || '') + '" placeholder="Ubicación (ej: Estante B-2)" style="margin-bottom:6px;">'
+    + '<label class="muted" style="display:block; margin-bottom:2px; font-size:12px;">Unidades por paquete (cada escaneo suma esta cantidad; déjalo en 1 si se vende suelto)</label>'
+    + '<input type="number" min="1" data-field="packSize" value="' + pack + '" style="margin-bottom:6px;">'
+    + barcodesInfo
+    + actions
+  + '</div>';
+}
+
+function refreshCatalogCard(code){
+  const list = document.getElementById('catalog-product-list');
+  const el = Array.from(list.children).find(function(c){ return c.getAttribute('data-code') === code; });
+  if(el) el.outerHTML = buildCatalogCard(code);
+}
+
+function setCatalogUI(next){
+  const involved = [catalogUI.adding, catalogUI.confirm && catalogUI.confirm.code];
+  catalogUI = Object.assign({ adding: null, confirm: null, msg: '', value: '' }, next);
+  involved.push(catalogUI.adding, catalogUI.confirm && catalogUI.confirm.code);
+  new Set(involved.filter(Boolean)).forEach(refreshCatalogCard);
+  if(catalogUI.adding){
+    const inp = document.getElementById('catalog-barcode-input');
+    if(inp) inp.focus();
+  }
+}
+
 function renderCatalogList(){
+  renderCatalogBarcodeAlert();
   const container = document.getElementById('catalog-product-list');
   const query = document.getElementById('catalog-search').value.trim().toLowerCase();
   const codes = Object.keys(productCatalog).sort();
-  const filtered = query
+  let filtered = query
     ? codes.filter(code => code.toLowerCase().includes(query) || (productCatalog[code].name || '').toLowerCase().includes(query) || (productCatalog[code].description || '').toLowerCase().includes(query))
     : codes;
+  if(catalogBarcodeFilter === 'sin') filtered = filtered.filter(code => !catalogHasBarcode(code));
+  else if(catalogBarcodeFilter === 'con') filtered = filtered.filter(catalogHasBarcode);
 
   if(filtered.length === 0){
-    container.innerHTML = '<p class="muted">' + (query ? 'No se encontraron productos para esa búsqueda.' : 'Todavía no hay productos en el catálogo. Se van agregando solos al subir cotizaciones, o puedes agregarlos a mano arriba.') + '</p>';
+    let msg = 'Todavía no hay productos en el catálogo. Se van agregando solos al subir cotizaciones, o puedes agregarlos a mano arriba.';
+    if(codes.length > 0){
+      msg = catalogBarcodeFilter === 'sin' && !query ? 'No hay productos sin código de barras. ✓'
+          : catalogBarcodeFilter === 'con' && !query ? 'Todavía ningún producto tiene código de barras.'
+          : 'No se encontraron productos para esa búsqueda.';
+    }
+    container.innerHTML = '<p class="muted">' + msg + '</p>';
     return;
   }
 
-  container.innerHTML = filtered.map(code => {
-    const p = productCatalog[code];
-    const barcodesInfo = (p.barcodes && p.barcodes.length)
-      ? '<div class="muted" style="font-size:11px;">Códigos de barra: ' + p.barcodes.map(escapeAttr).join(', ') + '</div>'
-      : '';
-    return '<div class="despacho-card" data-code="' + escapeAttr(code) + '">'
-      + '<div class="title" style="font-family:monospace; font-size:13px;">' + escapeAttr(code) + '</div>'
-      + '<input type="text" data-field="name" value="' + escapeAttr(p.name || '') + '" placeholder="Nombre del producto" style="margin-bottom:6px;">'
-      + '<input type="text" data-field="description" value="' + escapeAttr(p.description || '') + '" placeholder="Descripción / modelos" style="margin-bottom:6px;">'
-      + '<input type="text" data-field="location" value="' + escapeAttr(p.location || '') + '" placeholder="Ubicación (ej: Estante B-2)" style="margin-bottom:6px;">'
-      + barcodesInfo
-      + '<button type="button" class="btn-secondary" data-action="delete-product" style="margin-top:6px; width:100%; color:var(--danger-text);">Eliminar del catálogo</button>'
-    + '</div>';
-  }).join('');
+  const resumen = (catalogBarcodeFilter !== 'all' || query)
+    ? '<p class="muted" style="margin-bottom:8px;">Mostrando ' + filtered.length + ' producto(s).</p>' : '';
+  container.innerHTML = resumen + filtered.map(function(code){ return buildCatalogCard(code); }).join('');
 }
 
 document.getElementById('catalog-search').addEventListener('input', renderCatalogList);
+
+document.getElementById('catalog-barcode-alert').addEventListener('click', function(e){
+  const btn = e.target.closest('button[data-filter]');
+  if(!btn) return;
+  catalogBarcodeFilter = btn.getAttribute('data-filter');
+  renderCatalogList();
+});
 
 document.getElementById('catalog-product-list').addEventListener('input', function(e){
   const card = e.target.closest('.despacho-card');
@@ -2107,20 +2261,75 @@ document.getElementById('catalog-product-list').addEventListener('input', functi
   const code = card.getAttribute('data-code');
   const field = e.target.getAttribute('data-field');
   if(!field || !productCatalog[code]) return;
-  productCatalog[code][field] = e.target.value;
+  if(field === 'packSize'){
+    productCatalog[code].packSize = Math.max(1, parseInt(e.target.value) || 1);
+  } else {
+    productCatalog[code][field] = e.target.value;
+  }
   saveProductCatalog();
 });
 
-document.getElementById('catalog-product-list').addEventListener('click', function(e){
-  const btn = e.target.closest('[data-action="delete-product"]');
-  if(!btn) return;
-  const card = e.target.closest('.despacho-card');
-  const code = card.getAttribute('data-code');
-  delete productCatalog[code];
-  saveProductCatalog();
-  rebuildBarcodeIndex();
+function saveCatalogBarcode(code){
+  const input = document.getElementById('catalog-barcode-input');
+  const barcode = input ? input.value.trim() : '';
+  const fail = function(msg){ setCatalogUI({ adding: code, msg: msg, value: barcode }); };
+  const p = productCatalog[code];
+  if(!p) return;
+  if(!barcode) return fail('Escanea o escribe un código de barras.');
+  if((p.barcodes || []).includes(barcode)) return fail('Este producto ya tiene ese código de barras.');
+  const owner = barcodeIndex[barcode];
+  if(owner && owner !== code){
+    return fail('Ese código de barras ya está vinculado a «' + ((productCatalog[owner] && productCatalog[owner].name) || owner) + '» (' + owner + ').');
+  }
+  if(productCatalog[barcode] && barcode !== code){
+    return fail('Ese código ya existe en el catálogo como código interno de «' + (productCatalog[barcode].name || barcode) + '».');
+  }
+  linkBarcodeToProduct(barcode, code);
+  if(navigator.vibrate) navigator.vibrate(80);
+  catalogUI = { adding: null, confirm: null, msg: '', value: '' };
   renderCatalogList();
   renderInicioStats();
+}
+
+document.getElementById('catalog-product-list').addEventListener('keydown', function(e){
+  if(e.key !== 'Enter' || e.target.id !== 'catalog-barcode-input') return;
+  e.preventDefault();
+  const card = e.target.closest('.despacho-card');
+  if(card) saveCatalogBarcode(card.getAttribute('data-code'));
+});
+
+document.getElementById('catalog-product-list').addEventListener('click', function(e){
+  const btn = e.target.closest('button[data-action]');
+  if(!btn) return;
+  const card = btn.closest('.despacho-card');
+  if(!card) return;
+  const code = card.getAttribute('data-code');
+  const action = btn.getAttribute('data-action');
+  const conf = catalogUI.confirm;
+
+  if(action === 'add-barcode') setCatalogUI({ adding: code });
+  else if(action === 'cancel-add' || action === 'cancel-confirm') setCatalogUI({});
+  else if(action === 'save-barcode') saveCatalogBarcode(code);
+  else if(action === 'delete-product') setCatalogUI({ confirm: { code: code, kind: 'delete' } });
+  else if(action === 'unlink-barcode') setCatalogUI({ confirm: { code: code, kind: 'unlink', barcode: btn.getAttribute('data-barcode') } });
+  else if(action === 'confirm-delete'){
+    // Solo se elimina si se pidió y confirmó en esta misma tarjeta
+    if(!(conf && conf.code === code && conf.kind === 'delete')) return;
+    delete productCatalog[code];
+    saveProductCatalog();
+    rebuildBarcodeIndex();
+    catalogUI = { adding: null, confirm: null, msg: '', value: '' };
+    renderCatalogList();
+    renderInicioStats();
+  } else if(action === 'confirm-unlink'){
+    if(!(conf && conf.code === code && conf.kind === 'unlink') || !productCatalog[code]) return;
+    productCatalog[code].barcodes = (productCatalog[code].barcodes || []).filter(function(b){ return b !== conf.barcode; });
+    saveProductCatalog();
+    rebuildBarcodeIndex();
+    catalogUI = { adding: null, confirm: null, msg: '', value: '' };
+    renderCatalogList();
+    renderInicioStats();
+  }
 });
 
 // --- Cámara del catálogo (instancia separada a la de verificación) ---
