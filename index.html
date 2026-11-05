@@ -80,6 +80,9 @@ button:active{ transform:scale(0.98); }
 .badge{ display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; }
 .badge-success{ background:var(--success-bg); color:var(--success-text); }
 .badge-warning{ background:var(--warning-bg); color:var(--warning-text); }
+#scan-modal{ position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:60; display:flex; align-items:center; justify-content:center; padding:16px; }
+#scan-modal .scan-box{ background:var(--card); border-radius:12px; padding:14px; width:100%; max-width:440px; }
+#scan-modal-preview{ width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; margin-bottom:10px; }
 </style>
 </head>
 <body>
@@ -98,7 +101,7 @@ button:active{ transform:scale(0.98); }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V1.8</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V1.9</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -237,14 +240,14 @@ button:active{ transform:scale(0.98); }
   <div id="page-despachos" class="hidden">
     <p class="muted" style="margin-bottom:10px;">Los despachos se guardan aquí de forma indefinida. Solo se eliminan si tú los borras manualmente.</p>
     <input type="text" id="despachos-search" placeholder="Buscar por cliente o N° de cotización" style="margin-bottom:8px;">
-    <button type="button" id="btn-export-despachos-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel (.xlsx)</button>
+    <button type="button" id="btn-export-despachos-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel</button>
     <div id="despachos-list"></div>
   </div>
 
   <div id="page-recepciones" class="hidden">
     <p class="muted" style="margin-bottom:10px;">Las recepciones de mercadería se guardan aquí de forma indefinida. Solo se eliminan si tú las borras manualmente.</p>
     <input type="text" id="recepciones-search" placeholder="Buscar por proveedor o N° de orden/guía" style="margin-bottom:8px;">
-    <button type="button" id="btn-export-recepciones-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel (.xlsx)</button>
+    <button type="button" id="btn-export-recepciones-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel</button>
     <div id="recepciones-list"></div>
   </div>
 
@@ -298,7 +301,7 @@ button:active{ transform:scale(0.98); }
 
     <div class="card">
       <h2>Importar desde Excel</h2>
-      <p class="muted">Sube tu archivo de Excel (.xlsx, .xls o .csv). Reconoce los títulos por su nombre, en cualquier orden: <b>Código de referencia</b> (o Código), <b>Código de barras</b>, <b>Nombre</b>, <b>Descripción</b>, <b>Modelo</b>, <b>Color</b> y <b>Ubicación</b>. Lee todas las hojas con ese formato. Los precios y el stock se ignoran, y lo que ya existe en el catálogo solo se completa (no se sobreescribe).</p>
+      <p class="muted">Sube la <strong>Lista General de productos</strong> (.xlsx, .xls o .csv). Se leen las columnas <strong>DESCRIPCIÓN</strong>, <strong>CÓDIGO</strong> y <strong>MODELO</strong>; el resto (precios, stock, imágenes) se ignora. Si un producto ya existe, se actualizan su descripción y modelo, y se conservan sus códigos de barras, ubicación y unidades por paquete. Si el archivo trae una columna de código de barras (EAN), también se vinculan.</p>
       <input type="file" id="catalog-excel-input" accept=".xlsx,.xls,.csv" class="hidden">
       <button type="button" id="btn-catalog-excel" class="btn-secondary">Subir archivo de Excel</button>
       <p id="catalog-excel-status" class="muted" style="margin-top:6px;"></p>
@@ -315,8 +318,8 @@ button:active{ transform:scale(0.98); }
     <div class="card">
       <h2>Agregar producto manualmente</h2>
       <input type="text" id="catalog-new-code" placeholder="Código" style="margin-bottom:8px;">
-      <input type="text" id="catalog-new-name" placeholder="Nombre" style="margin-bottom:8px;">
-      <input type="text" id="catalog-new-description" placeholder="Descripción / modelos (opcional)" style="margin-bottom:8px;">
+      <input type="text" id="catalog-new-name" placeholder="Descripción" style="margin-bottom:8px;">
+      <input type="text" id="catalog-new-description" placeholder="Modelo(s) (opcional)" style="margin-bottom:8px;">
       <input type="text" id="catalog-new-location" placeholder="Ubicación (ej: Estante B-2)" style="margin-bottom:8px;">
       <button type="button" id="btn-catalog-add" class="btn-secondary">Agregar al catálogo</button>
       <p id="catalog-add-status" class="muted" style="margin-top:6px;"></p>
@@ -324,6 +327,15 @@ button:active{ transform:scale(0.98); }
     <div id="catalog-product-list"></div>
   </div>
 
+</div>
+
+<div id="scan-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="scan-modal-title">
+  <div class="scan-box">
+    <h2 id="scan-modal-title">Escanear código de barras</h2>
+    <div id="scan-modal-preview"></div>
+    <p id="scan-modal-status" class="muted"></p>
+    <button type="button" id="scan-modal-close" class="btn-secondary">Cancelar</button>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/3.0.3/jspdf.umd.min.js"></script>
@@ -337,7 +349,9 @@ function showPage(pageName){
   if(pageName !== 'catalogo' && typeof catalogCameraActive !== 'undefined' && catalogCameraActive){
     stopCatalogCamera();
   }
-  if(pageName !== 'catalogo' && typeof stopCardCamera === 'function') stopCardCamera();
+  if(typeof modalQrCode !== 'undefined' && !document.getElementById('scan-modal').classList.contains('hidden')){
+    closeBarcodeScanner();
+  }
   document.getElementById('page-inicio').classList.toggle('hidden', pageName !== 'inicio');
   document.getElementById('page-contabilizacion').classList.toggle('hidden', pageName !== 'contabilizacion');
   document.getElementById('page-despachos').classList.toggle('hidden', pageName !== 'despachos');
@@ -427,7 +441,78 @@ try{
   productCatalog = {};
 }
 
+// Búsqueda de códigos en el catálogo sin importar mayúsculas ni espacios
+// ("api-roj-honda" = "API-ROJ-Honda", "CP331BCM _ CAL261BC40" = "CP331BCM_CAL261BC40").
+let catalogNormIndex = null;
+let catalogCompactIndex = null;
+function normCode(c){ return String(c == null ? '' : c).toUpperCase().replace(/\s+/g, ' ').trim(); }
+function compactCode(c){ return normCode(c).replace(/\s+/g, ''); }
+function invalidateCatalogIndex(){ catalogNormIndex = null; catalogCompactIndex = null; }
+function findCatalogCode(code){
+  if(!code) return null;
+  if(productCatalog[code]) return code;
+  if(!catalogNormIndex){
+    catalogNormIndex = {};
+    catalogCompactIndex = {};
+    Object.keys(productCatalog).forEach(k => {
+      catalogNormIndex[normCode(k)] = k;
+      catalogCompactIndex[compactCode(k)] = k;
+    });
+  }
+  return catalogNormIndex[normCode(code)] || catalogCompactIndex[compactCode(code)] || null;
+}
+
+// Versiones anteriores leían mal algunos códigos del PDF y los guardaban cortados
+// ("A05-11B-A01-32-" en vez de "A05-11B-A01-32-M") o con otras mayúsculas, y a veces se les
+// vinculó un código de barras. Si un código que NO está en la Lista General corresponde sin
+// dudas a uno solo que SÍ está, sus códigos de barras pasan al correcto y se borra el cortado.
+// Si hay dudas (varios candidatos), no se toca.
+// Devuelve el código oficial (de la Lista General) al que corresponde sin dudas un código
+// mal leído, o null si no hay ninguno o hay varios posibles.
+function findRepairTarget(code, officialNorm){
+  if(productCatalog[code] && productCatalog[code].fromExcel) return null;
+  const n = normCode(code);
+  let candidates = officialNorm.filter(o => o.n === n);
+  if(candidates.length === 0 && /[-_.]$/.test(code)) candidates = officialNorm.filter(o => o.n.indexOf(n) === 0);
+  if(candidates.length === 0) return null;
+  const distinct = new Set(candidates.map(o => o.n));
+  return distinct.size === 1 ? candidates[0].code : null;
+}
+function officialCodesNorm(){
+  return Object.keys(productCatalog).filter(c => productCatalog[c].fromExcel).map(c => ({ code: c, n: normCode(c) }));
+}
+
+function repairTruncatedCodes(){
+  const result = { merged: [], ambiguous: [] };
+  const officialNorm = officialCodesNorm();
+  if(officialNorm.length === 0) return result;
+  Object.keys(productCatalog).forEach(code => {
+    const p = productCatalog[code];
+    if(p.fromExcel) return;
+    const targetCode = findRepairTarget(code, officialNorm);
+    if(!targetCode) return;
+    const target = productCatalog[targetCode];
+    if(!Array.isArray(target.barcodes)) target.barcodes = [];
+    (p.barcodes || []).forEach(bc => { if(!target.barcodes.includes(bc)) target.barcodes.push(bc); });
+    if(!target.location && p.location) target.location = p.location;
+    if((!target.packSize || target.packSize === 1) && p.packSize > 1) target.packSize = p.packSize;
+    delete productCatalog[code];
+    result.merged.push(code + ' → ' + targetCode);
+  });
+  if(result.merged.length){
+    saveProductCatalog();
+    rebuildBarcodeIndex();
+  }
+  return result;
+}
+
+// "DIAZ GUEVARA JEAN CARLO Vendedor :" -> "DIAZ GUEVARA JEAN CARLO" (error de lectura de versiones anteriores)
+function cleanClientName(client){
+  return String(client || '').replace(/\s+vendedor\s*:.*$/i, '').trim();
+}
+
 function rebuildBarcodeIndex(){
+  invalidateCatalogIndex();
   barcodeIndex = {};
   Object.keys(productCatalog).forEach(code => {
     (productCatalog[code].barcodes || []).forEach(bc => { barcodeIndex[bc] = code; });
@@ -435,6 +520,7 @@ function rebuildBarcodeIndex(){
 }
 
 function saveProductCatalog(){
+  invalidateCatalogIndex();
   try{
     localStorage.setItem('rios_product_catalog', JSON.stringify(productCatalog));
   }catch(e){
@@ -447,6 +533,7 @@ function upsertProduct(code, name, location, description){
   if(!code) return;
   if(!productCatalog[code]){
     productCatalog[code] = { name: name || '', location: location || '', barcodes: [], description: description || '' };
+    invalidateCatalogIndex();
   } else {
     if(name && !productCatalog[code].name) productCatalog[code].name = name;
     if(location && !productCatalog[code].location) productCatalog[code].location = location;
@@ -527,6 +614,19 @@ function loadRecepciones(){ return loadMovimientos().filter(m => m.type === 'rec
   }catch(e){ /* sin datos previos que migrar */ }
 })();
 
+// Migración V1.9: limpiar "Vendedor :" que versiones anteriores pegaban al nombre del cliente
+(function cleanStoredClientNames(){
+  try{
+    const list = loadMovimientos();
+    let changed = false;
+    list.forEach(m => {
+      const clean = cleanClientName(m.client);
+      if(clean !== (m.client || '')){ m.client = clean; changed = true; }
+    });
+    if(changed) saveMovimientosList(list);
+  }catch(e){ /* nada que limpiar */ }
+})();
+
 rebuildBarcodeIndex();
 
 let html5QrCode = null;
@@ -543,8 +643,12 @@ function showScreen(name){
 }
 
 function renderBuildList(){
+  const catalogLoaded = Object.keys(productCatalog).length > 0;
   const html = pickItems.map((item, idx) =>
-    '<div class="build-row">'
+    (catalogLoaded && item.code && !findCatalogCode(item.code)
+      ? '<div style="font-size:11px; color:var(--warning-text); background:var(--warning-bg); border:1px solid var(--warning-border); border-bottom:none; border-radius:8px 8px 0 0; padding:3px 8px; margin-bottom:-1px;">⚠ «' + escapeAttr(item.code) + '» no está en el catálogo — revisa el código</div>'
+      : '')
+    + '<div class="build-row">'
       + '<input class="f-code" data-idx="'+idx+'" data-field="code" value="'+escapeAttr(item.code)+'" placeholder="Código">'
       + '<input class="f-name" data-idx="'+idx+'" data-field="name" value="'+escapeAttr(item.name)+'" placeholder="Nombre">'
       + '<input class="f-qty" type="number" min="1" data-idx="'+idx+'" data-field="qty" value="'+item.qty+'">'
@@ -635,15 +739,18 @@ if(typeof pdfjsLib !== 'undefined'){
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
-async function extractPdfLineObjects(file){
+async function extractPdfRows(file){
+  // Devuelve cada renglón del PDF con sus celdas (texto + posición X), para poder
+  // distinguir la columna CODIGO de la columna ARTICULO aunque el código tenga espacios
+  // o se parta en varios renglones dentro de su celda.
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const allLines = [];
+  const rows = [];
   for(let p = 1; p <= pdf.numPages; p++){
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
     const items = content.items
-      .map(it => ({ text: it.str, x: it.transform[4], y: it.transform[5], x1: it.transform[4] + (it.width || 0), h: Math.abs(it.transform[3]) || it.height || 8 }))
+      .map(it => ({ text: it.str, x: it.transform[4], y: it.transform[5] }))
       .filter(it => it.text.trim().length > 0);
     items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
     const lines = [];
@@ -651,91 +758,162 @@ async function extractPdfLineObjects(file){
     const Y_TOLERANCE = 3;
     items.forEach(it => {
       if(current && Math.abs(it.y - current.y) <= Y_TOLERANCE){
-        current.items.push(it);
+        current.cells.push(it);
       } else {
-        current = { y: it.y, items: [it] };
+        current = { y: it.y, cells: [it] };
         lines.push(current);
       }
     });
     lines.forEach(line => {
-      line.items.sort((a, b) => a.x - b.x);
-      // Si dos trozos de texto casi se tocan (un código largo partido por el PDF), se pegan sin espacio
-      let text = '';
-      line.items.forEach((it, idx) => {
-        if(idx === 0){ text = it.text; return; }
-        const prev = line.items[idx - 1];
-        const gap = it.x - prev.x1;
-        const pegado = prev.x1 > prev.x && gap < Math.max(0.6, 0.12 * (prev.h || 8)) && !/\s$/.test(prev.text) && !/^\s/.test(it.text);
-        text += (pegado ? '' : ' ') + it.text;
-      });
-      text = text.replace(/\s+/g, ' ').trim();
-      if(text) allLines.push({ text: text, items: line.items });
+      line.cells.sort((a, b) => a.x - b.x);
+      const cells = line.cells
+        .map(c => ({ text: c.text.replace(/\s+/g, ' ').trim(), x: c.x }))
+        .filter(c => c.text);
+      const text = cells.map(c => c.text).join(' ').replace(/\s+/g, ' ').trim();
+      if(text) rows.push({ page: p, y: line.y, cells: cells, text: text });
     });
   }
-  return allLines;
+  return rows;
 }
 
 async function extractPdfLines(file){
-  const objs = await extractPdfLineObjects(file);
-  return objs.map(l => l.text);
+  const rows = await extractPdfRows(file);
+  return rows.map(r => r.text);
 }
 
 const SKIP_LINE_PATTERN = /CODIGO|ARTICULO|CANT\.|U\.M\.|PRECIO|SUBTOTAL|IGV|^TOTAL|SON:|OBSERVACIONES|COTIZACI|DEVOLUCION|R\.U\.C\.|EMISI[OÓ]N|CLIENTE|VENDEDOR|COND\. VENTA|DIRECCI[OÓ]N|^ITEM$/i;
 
-// Acepta 12.50, 12,50, 1,234.50 y 1.234,50
-const DECIMAL_TOKEN_RE = /^(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)$/;
-const CODE_TOKEN_RE = /^[A-Z0-9][A-Z0-9.\-_\/+#]{2,}$/i;
+// Números de dinero: 35.03 / 1,324.16 / 1.324,16 / 105,5
+const MONEY_TOKEN_RE = /^(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,3}(?:\.\d{3})+,\d+|\d+(?:[.,]\d+)?)$/;
 
-function tokenToNumber(tok){
-  let t = String(tok);
-  if(/^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(t)) t = t.replace(/,/g, '');
-  else if(/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
-  else t = t.replace(',', '.');
-  return parseFloat(t) || 0;
+function parseMoney(token){
+  const t = String(token || '').trim();
+  if(/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(t)) return parseFloat(t.replace(/,/g, ''));
+  if(/^\d{1,3}(?:\.\d{3})+,\d+$/.test(t)) return parseFloat(t.replace(/\./g, '').replace(',', '.'));
+  return parseFloat(t.replace(',', '.')) || 0;
 }
 
-function popDecimalToken(tokens){
+function popMoneyToken(tokens){
   if(tokens.length === 0) return null;
   const last = tokens[tokens.length - 1];
-  if(DECIMAL_TOKEN_RE.test(last)) return tokens.pop();
+  if(MONEY_TOKEN_RE.test(last)) return tokens.pop();
   return null;
 }
 
-function parseLineToItem(line){
-  // Un producto se reconoce por su estructura (N° de ítem + código + cantidad + precios), no por palabras sueltas
-  const tokens = line.split(/\s+/).filter(Boolean);
-  if(tokens.length < 3) return null;
+// Separa la parte derecha de un renglón de producto: CANT. [U.M] P.UNIT [DSC %] TOTAL.
+// Devuelve null si el renglón no tiene esa forma.
+function splitItemTokens(text){
+  const tokens = text.split(/\s+/).filter(Boolean);
+  if(tokens.length < 4) return null;
   if(!/^\d{1,3}$/.test(tokens[0])) return null;
-  tokens.shift();
-  if(tokens.length < 2) return null;
+  const itemNo = parseInt(tokens.shift(), 10);
+  const isInt = t => /^\d{1,5}$/.test(t);
+  const hasDecimals = t => /[.,]\d{1,4}$/.test(t);
 
-  const codigo = tokens.shift();
-  if(!CODE_TOKEN_RE.test(codigo)) return null;
+  // 1) Cola numérica desde la derecha: [CANT si no hay U.M] P.UNIT [DSC] TOTAL
+  const tail = []; // { t, pct }
+  let pctPending = false;
+  while(tokens.length && tail.length < 6){
+    const t = tokens[tokens.length - 1];
+    if(t === '%'){ pctPending = true; tokens.pop(); continue; }
+    if(/^\d+(?:[.,]\d+)?%$/.test(t)){ tail.unshift({ t: t.slice(0, -1), pct: true }); tokens.pop(); continue; }
+    if(MONEY_TOKEN_RE.test(t)){ tail.unshift({ t: t, pct: pctPending }); pctPending = false; tokens.pop(); continue; }
+    break;
+  }
+  if(tail.length === 0) return null;
 
-  const totalTok = popDecimalToken(tokens); // precio total de la línea
-  if(tokens.length && tokens[tokens.length - 1] === '%'){
+  // 2) U.M. (UNIDAD, PAR, JUEGO, KIT...). Puede venir vacía.
+  let qtyToken = null;
+  const firstDec = tail.findIndex(e => !e.pct && hasDecimals(e.t));
+  const qtyInsideTail = firstDec >= 1 && isInt(tail[firstDec - 1].t);
+  if(!qtyInsideTail && tokens.length >= 2 && /^[A-ZÁÉÍÓÚÑ]{2,10}$/i.test(tokens[tokens.length - 1]) && isInt(tokens[tokens.length - 2])){
     tokens.pop();
-    popDecimalToken(tokens); // dsc
-  } else if(tokens.length && /^\d+(?:[.,]\d{1,2})?%$/.test(tokens[tokens.length - 1])){
-    tokens.pop();
-  }
-  const precioUnitario = popDecimalToken(tokens);
-
-  if(tokens.length && /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9.\/]{0,9}$/i.test(tokens[tokens.length - 1])){
-    tokens.pop(); // U.M.
-  }
-
-  let cant = null;
-  if(tokens.length && /^\d{1,5}(?:[.,]0{1,3})?$/.test(tokens[tokens.length - 1])){
-    cant = tokens.pop();
+    qtyToken = tokens.pop();
+  } else {
+    // Sin U.M.: la cantidad es el entero que va justo antes del primer precio con decimales.
+    if(!qtyInsideTail) return null;
+    qtyToken = tail[firstDec - 1].t;
+    // Lo que quede a la izquierda de la cantidad (ej. una talla "44") vuelve al artículo.
+    tail.slice(0, firstDec - 1).forEach(e => tokens.push(e.t));
+    tail.splice(0, firstDec);
   }
 
-  if(!cant || !precioUnitario) return null;
+  const nums = tail.filter(e => !e.pct).map(e => e.t);
+  if(nums.length === 0 || tokens.length === 0) return null;
+  const priceToken = nums[0];
+  const totalToken = nums.length >= 2 ? nums[nums.length - 1] : null;
 
-  const name = tokens.join(' ').trim();
-  const price = tokenToNumber(precioUnitario);
-  const qty = Math.round(parseFloat(cant.replace(',', '.'))) || 1;
-  return { code: codigo, name: name || '(sin nombre)', qty: qty, price: price, total: totalTok ? tokenToNumber(totalTok) : 0 };
+  return {
+    itemNo: itemNo,
+    middle: tokens, // código + artículo
+    qty: parseInt(qtyToken, 10) || 1,
+    price: parseMoney(priceToken),
+    lineTotal: totalToken ? parseMoney(totalToken) : null
+  };
+}
+
+// Compatibilidad: algunas partes antiguas usan esta función con solo el texto.
+function parseLineToItem(line){
+  if(SKIP_LINE_PATTERN.test(line)) return null;
+  const s = splitItemTokens(line);
+  if(!s) return null;
+  const code = s.middle[0];
+  const name = s.middle.slice(1).join(' ').trim();
+  return { code: code, name: name || '(sin nombre)', qty: s.qty, price: s.price };
+}
+
+// Convierte un renglón con sus celdas en un producto, usando la posición de las celdas
+// para separar CODIGO de ARTICULO, y el catálogo para confirmar el código.
+function parseRowToItem(row, ignoreSkipPattern){
+  if(!ignoreSkipPattern && SKIP_LINE_PATTERN.test(row.text)) return null;
+  const s = splitItemTokens(row.text);
+  if(!s) return null;
+
+  const middle = s.middle;
+  const middleText = middle.join(' ');
+  const cells = row.cells;
+  let code = null;
+  let name = '';
+  let nameX = null;
+  let tailX = null;
+
+  // 1) Por celdas: la celda que sigue al N° de ítem es la del código.
+  const codeCell = cells.length >= 3 && /^\d{1,3}$/.test(cells[0].text) ? cells[1] : null;
+  if(codeCell && middleText.indexOf(codeCell.text) === 0 && middleText.length > codeCell.text.length){
+    code = codeCell.text;
+    name = middleText.slice(codeCell.text.length).trim();
+    if(cells[2]) nameX = cells[2].x;
+    if(cells[3]) tailX = cells[3].x; // desde aquí empiezan CANT., U.M, precios
+  }
+
+  // 2) Por catálogo: si el código leído no existe pero un prefijo del texto sí, usamos ese.
+  if(!code || !findCatalogCode(code)){
+    for(let n = Math.min(middle.length - 1, 6); n >= 1; n--){
+      const candidate = middle.slice(0, n).join(' ');
+      if(findCatalogCode(candidate)){
+        code = candidate;
+        name = middle.slice(n).join(' ');
+        break;
+      }
+    }
+  }
+
+  // 3) Último recurso: primera palabra = código.
+  if(!code){
+    code = middle[0];
+    name = middle.slice(1).join(' ');
+  }
+
+  return {
+    itemNo: s.itemNo,
+    code: code,
+    name: name.trim() || '(sin nombre)',
+    qty: s.qty,
+    price: s.price,
+    lineTotal: s.lineTotal,
+    nameX: nameX,
+    tailX: tailX
+  };
 }
 
 function extractQuoteMetadata(lines){
@@ -750,8 +928,9 @@ function extractQuoteMetadata(lines){
     }
 
     if(!meta.client){
-      const clientMatch = line.match(/^cliente\s*:\s*(.+)$/i);
-      if(clientMatch) meta.client = clientMatch[1].replace(/\s+vendedor\s*:.*$/i, '').trim();
+      // "Cliente : NOMBRE   Vendedor : JOSE" -> solo NOMBRE
+      const clientMatch = line.match(/^cliente\s*:\s*(.+?)(?:\s+vendedor\s*:.*)?$/i);
+      if(clientMatch) meta.client = clientMatch[1].trim();
     }
 
     if(!meta.quoteNumber){
@@ -772,111 +951,166 @@ function extractQuoteMetadata(lines){
   return meta;
 }
 
-// Ubica en la línea el texto exacto del código (aunque venga partido en trozos pegados)
-function findCodeBox(lineObj, code){
-  const items = lineObj.items;
-  for(let s = 0; s < items.length; s++){
-    let acc = '';
-    for(let e = s; e < items.length; e++){
-      acc += items[e].text.trim();
-      if(acc === code) return { x: items[s].x, x1: items[e].x1 };
-      if(!code.startsWith(acc)) break;
-    }
-  }
-  return null;
+function extractPdfTotal(lines){
+  let total = null;
+  lines.forEach(line => {
+    const clean = line.replace(/SUB\s*TOTAL/gi, ' ');
+    const m = clean.match(/\bTOTAL\s*S\/\.?\s*([\d.,]+)/i);
+    if(m) total = parseMoney(m[1]);
+  });
+  return total;
+}
+
+function joinCodeFragment(base, fragment){
+  // Las celdas se parten después de un guion/punto (sin espacio) o en un espacio.
+  const glued = base + fragment;
+  const spaced = base + ' ' + fragment;
+  if(findCatalogCode(glued)) return glued;
+  if(findCatalogCode(spaced)) return spaced;
+  return /[\-._\/]$/.test(base) ? glued : spaced;
 }
 
 async function extractItemsFromPdf(file){
-  const lineObjs = await extractPdfLineObjects(file);
-  const lines = lineObjs.map(l => l.text);
+  const rows = await extractPdfRows(file);
+  const lines = rows.map(r => r.text);
   const metadata = extractQuoteMetadata(lines);
-
-  // Pasada 1: dónde está la columna de códigos (el código más largo la ocupa completa)
-  let colMin = Infinity, colMax = -Infinity;
-  lineObjs.forEach(lo => {
-    const parsed = parseLineToItem(lo.text);
-    if(!parsed) return;
-    const box = findCodeBox(lo, parsed.code);
-    if(box){ colMin = Math.min(colMin, box.x); colMax = Math.max(colMax, box.x1); }
-  });
-  const hasColumn = isFinite(colMin) && isFinite(colMax);
-
+  const pdfTotal = extractPdfTotal(lines);
   const items = [];
-  const unparsed = [];
-  let sumTotals = 0;
+  const itemNumbers = [];
+  const unreadRows = [];
+  let lineTotalSum = 0;
+  let lineTotalsComplete = true;
+
   let lastItem = null;
+  let lastNameX = null;
+  let lastTailX = null;
+  let lastY = null;
+  let lastPage = null;
+  let headerCodeX = null;
+  let inTable = false;
 
-  lineObjs.forEach(lo => {
-    const line = lo.text;
+  rows.forEach(row => {
+    if(row.page !== lastPage){ lastItem = null; lastPage = row.page; }
 
-    const parsed = parseLineToItem(line);
-    if(!parsed && SKIP_LINE_PATTERN.test(line)){
+    // Encabezado de la tabla: ITEM / CODIGO / ARTICULO...
+    if(/^%+$/.test(row.text)) return; // "%" del descuento que cayó en otro renglón
+    if(!/^\d{1,3}\s/.test(row.text) && /C[OÓ]DIGO/i.test(row.text) && /ARTICULO|DESCRIPCI/i.test(row.text)){
+      inTable = true;
+      const hc = row.cells.find(c => /^C[OÓ]DIGO$/i.test(c.text));
+      if(hc) headerCodeX = hc.x;
       lastItem = null;
       return;
     }
+    if(/^SON\s*:|SUB\s*TOTAL|^TOTAL\b/i.test(row.text)){
+      inTable = false;
+      lastItem = null;
+      return;
+    }
+    // Dentro de la tabla, un renglón que empieza con N° de ítem en la columna ITEM es un
+    // producto aunque su nombre tenga palabras como "CODIGO" o "PRECIO".
+    const first = row.cells[0];
+    const looksLikeItemRow = first && /^\d{1,3}$/.test(first.text) && row.cells.length >= 3
+      && (headerCodeX === null || first.x < headerCodeX);
+    const structuralItemRow = looksLikeItemRow && inTable && headerCodeX !== null;
+
+    if(!structuralItemRow && SKIP_LINE_PATTERN.test(row.text)){
+      lastItem = null;
+      return;
+    }
+
+    const parsed = parseRowToItem(row, structuralItemRow);
     if(parsed){
-      const item = { code: parsed.code, name: parsed.name, qty: parsed.qty, picked: 0, price: parsed.price || 0 };
+      const catalogCode = findCatalogCode(parsed.code);
+      const item = { code: catalogCode || parsed.code, name: parsed.name, qty: parsed.qty, picked: 0, price: parsed.price || 0 };
       items.push(item);
-      sumTotals += parsed.total || 0;
+      itemNumbers.push(parsed.itemNo);
+      if(parsed.lineTotal === null) lineTotalsComplete = false;
+      else lineTotalSum += parsed.lineTotal;
       lastItem = item;
+      lastNameX = parsed.nameX;
+      lastTailX = parsed.tailX;
+      lastY = row.y;
       return;
     }
 
-    const tokens = line.split(/\s+/).filter(Boolean);
-    // Empieza con número de ítem y trae un "%": casi seguro es un producto que no se pudo leer
-    if(tokens.length >= 3 && /^\d{1,3}$/.test(tokens[0]) && tokens.indexOf('%') !== -1){
-      unparsed.push(line.length > 110 ? line.slice(0, 110) + '…' : line);
+    // Renglón que empieza con N° de ítem pero no se pudo leer: avisar, nunca ignorarlo en silencio.
+    if(looksLikeItemRow && (inTable || headerCodeX === null)){
+      unreadRows.push(row.text);
       lastItem = null;
       return;
     }
 
-    if(!lastItem || tokens.length === 0) return;
+    // Continuación del producto anterior (código partido y/o descripción larga).
+    if(!lastItem) return;
+    if(lastY !== null && (lastY - row.y) > 22){ lastItem = null; return; }
+    lastY = row.y;
 
-    // Continuación: resto de un código largo partido en dos líneas dentro de su columna,
-    // o la continuación de una descripción larga.
-    if(hasColumn){
-      const fragmentos = [];
-      const resto = [];
-      lo.items.forEach(it => {
-        const t = it.text.trim();
-        const enColumnaCodigo = it.x >= colMin - 4 && it.x1 <= colMax + 4;
-        if(enColumnaCodigo && /^[A-Z0-9.\-_\/+#]{1,20}$/i.test(t)) fragmentos.push(t); else resto.push(t);
+    let codeText = '';
+    let nameText = '';
+    if(lastNameX !== null){
+      row.cells.forEach(c => {
+        if(lastTailX !== null && c.x >= lastTailX - 2) return; // "%" u otros restos de columnas numéricas
+        if(c.x < lastNameX - 2) codeText += (codeText ? ' ' : '') + c.text;
+        else nameText += (nameText ? ' ' : '') + c.text;
       });
-      if(fragmentos.length){
-        lastItem.code = lastItem.code + fragmentos.join('');
-        if(resto.length) lastItem.name = (lastItem.name + ' ' + resto.join(' ')).replace(/\s+/g, ' ').trim();
-        return;
-      }
     } else {
+      const tokens = row.text.split(/\s+/).filter(Boolean);
       const looksLikeCodeFragment = tokens.length <= 2
         && tokens.every(t => /^[A-Z0-9.\-_]{1,12}$/i.test(t))
         && tokens.some(t => /\d/.test(t));
-      if(looksLikeCodeFragment && /[\-._]$/.test(lastItem.code)){
-        lastItem.code = lastItem.code + tokens.join('');
-        return;
-      }
+      if(looksLikeCodeFragment && /[\-._]$/.test(lastItem.code)) codeText = tokens.join('');
+      else nameText = row.text;
     }
-    lastItem.name = (lastItem.name + ' ' + line).trim();
+
+    if(codeText){
+      const joined = joinCodeFragment(lastItem.code, codeText);
+      lastItem.code = findCatalogCode(joined) || joined;
+    }
+    if(nameText) lastItem.name = (lastItem.name + ' ' + nameText).trim();
   });
 
-  // Control: la suma de las líneas debe coincidir con el total impreso en el PDF
-  let docTotal = null;
-  lines.forEach(l => {
-    if(/SUB\s*TOTAL|PRECIO|IGV/i.test(l)) return;
-    const m = l.match(/(?:^|\s)TOTAL\s*(?:S\/\.?|US\$|\$)?\s*([\d.,]+)\s*$/i);
-    if(m && DECIMAL_TOKEN_RE.test(m[1])) docTotal = tokenToNumber(m[1]);
-  });
-  let check = null;
-  if(docTotal !== null && items.length > 0){
-    const tol = Math.max(0.06, 0.01 * items.length);
-    const ok = [1, 1.18, 1 / 1.18].some(f => Math.abs(sumTotals * f - docTotal) <= tol);
-    check = { sum: sumTotals, total: docTotal, ok: ok };
+  // Controles de calidad
+  const warnings = { unreadRows: unreadRows, missingItemNumbers: [], totalMismatch: null, pdfTotal: pdfTotal, sum: lineTotalSum };
+  if(itemNumbers.length){
+    const maxNo = Math.max.apply(null, itemNumbers);
+    const seen = new Set(itemNumbers);
+    for(let n = 1; n <= maxNo; n++) if(!seen.has(n)) warnings.missingItemNumbers.push(n);
+  }
+  if(pdfTotal && lineTotalsComplete && items.length && Math.abs(pdfTotal - lineTotalSum) > 0.05){
+    warnings.totalMismatch = { pdfTotal: pdfTotal, sum: lineTotalSum };
   }
 
-  return { items, metadata, unparsed, check };
+  return { items: items, metadata: metadata, warnings: warnings };
 }
 
 const COTIZACION_PROMPT = 'Este archivo (puede ser un PDF o una foto) es una cotizacion de productos de repuestos y accesorios para motos. Lee la tabla y devuelve EXCLUSIVAMENTE un arreglo JSON valido, sin texto adicional, sin explicaciones, sin marcadores de markdown. Formato exacto: [{"code":"CODIGO","name":"NOMBRE BREVE (maximo 6 palabras)","qty":NUMERO,"price":NUMERO}]. Usa el codigo de la columna CODIGO o COD, el nombre de la columna ARTICULO o PRODUCTO, la cantidad de la columna CANT o CANTIDAD, y el precio de la columna PRECIO UNITARIO (en soles, solo el numero, sin S/). Si una fila no tiene cantidad visible, usa 1. Si no hay precio visible, usa 0. No omitas ninguna fila de producto.';
+
+function formatMoney(n){
+  return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function buildPdfWarningsHtml(w, notInCatalog){
+  const box = function(html){
+    return '<div style="background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:8px; padding:8px 10px; margin-top:8px; font-size:13px;">' + html + '</div>';
+  };
+  let out = '';
+  if(w.unreadRows.length){
+    out += box('⚠ <b>No pude leer ' + w.unreadRows.length + ' línea(s) del PDF.</b> Agrégalas a mano:<br>'
+      + w.unreadRows.map(t => '• ' + escapeAttr(t)).join('<br>'));
+  }
+  if(w.missingItemNumbers.length){
+    out += box('⚠ <b>Faltan ítems en la numeración:</b> ' + w.missingItemNumbers.map(n => String(n).padStart(2, '0')).join(', ') + '. Revisa el PDF y agrégalos a mano.');
+  }
+  if(w.totalMismatch){
+    out += box('⚠ <b>El total no cuadra:</b> el PDF dice S/ ' + formatMoney(w.totalMismatch.pdfTotal)
+      + ' y la suma de lo leído da S/ ' + formatMoney(w.totalMismatch.sum) + '. Puede faltar o sobrar un producto.');
+  }
+  if(notInCatalog && notInCatalog.length){
+    out += box('ℹ <b>' + notInCatalog.length + ' código(s) no están en el catálogo:</b> '
+      + notInCatalog.map(c => escapeAttr(c)).join(', ') + '. Puede ser un error de lectura o un producto nuevo; revísalos abajo (marcados en amarillo).');
+  }
+  return out;
+}
 
 async function processCotizacionPhoto(file){
   const status = document.getElementById('photo-status');
@@ -899,27 +1133,32 @@ async function processCotizacionPhoto(file){
       if(metadata.quoteDate && !quoteDateInput.value.trim()) quoteDateInput.value = metadata.quoteDate;
       if(metadata.client && !quoteClientInput.value.trim()) quoteClientInput.value = metadata.client;
 
+      const w = result.warnings;
       if(items.length === 0){
-        status.textContent = 'No se pudieron identificar productos en este PDF automáticamente. Agrégalos manualmente abajo.';
+        status.innerHTML = 'No se pudieron identificar productos en este PDF automáticamente. Agrégalos manualmente abajo.'
+          + (w.unreadRows.length ? buildPdfWarningsHtml(w, []) : '');
         return;
       }
+      // Con catálogo cargado, los códigos desconocidos NO se agregan solos al catálogo
+      // (para no llenarlo de códigos mal leídos); se marcan para revisarlos.
+      const catalogLoaded = Object.keys(productCatalog).length > 0;
+      const notInCatalog = [];
       items.forEach(it => {
         pickItems.push(it);
-        upsertProduct(it.code, it.name, '');
+        if(findCatalogCode(it.code)) upsertProduct(findCatalogCode(it.code), it.name, '');
+        else if(!catalogLoaded) upsertProduct(it.code, it.name, '');
+        else notInCatalog.push(it.code);
       });
       saveProductCatalog();
       renderBuildList();
       renderCatalogStatus();
-      let msg = 'Se agregaron ' + items.length + ' línea(s) desde el PDF. Revisa los códigos antes de continuar, sobre todo los que se parecen entre sí.';
-      if(result.check){
-        if(result.check.ok) msg += '\n✓ La suma de los productos (' + result.check.sum.toFixed(2) + ') coincide con el total del PDF (' + result.check.total.toFixed(2) + ').';
-        else msg += '\n⚠ La suma de los productos leídos (' + result.check.sum.toFixed(2) + ') NO coincide con el total del PDF (' + result.check.total.toFixed(2) + '): puede faltar algún producto. Compara la lista con el PDF.';
+      const hasProblems = w.unreadRows.length || w.missingItemNumbers.length || w.totalMismatch || notInCatalog.length;
+      let summary = 'Se agregaron ' + items.length + ' línea(s) desde el PDF.';
+      if(!hasProblems){
+        summary = '<span style="color:var(--success-text); font-weight:600;">✓ Se leyeron los ' + items.length + ' ítems'
+          + (w.pdfTotal ? ' y el total cuadra (S/ ' + formatMoney(w.pdfTotal) + ')' : '') + '.</span>';
       }
-      if(result.unparsed && result.unparsed.length){
-        msg += '\n⚠ ' + result.unparsed.length + ' línea(s) parecen productos pero no se pudieron leer; agrégalas manualmente: ' + result.unparsed.join(' | ');
-      }
-      status.style.whiteSpace = 'pre-line';
-      status.textContent = msg;
+      status.innerHTML = summary + buildPdfWarningsHtml(w, notInCatalog);
     }catch(err){
       status.textContent = 'No se pudo leer este PDF (' + err.message + '). Agrega los productos manualmente abajo.';
     }
@@ -1327,17 +1566,7 @@ async function toggleCamera(){
   }
 
   try{
-    html5QrCode = new Html5Qrcode('camera-preview', {
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.QR_CODE
-      ]
-    });
+    html5QrCode = new Html5Qrcode('camera-preview', barcodeScannerConfig());
     document.getElementById('camera-preview').style.display = 'block';
     await html5QrCode.start(
       { facingMode: 'environment' },
@@ -1660,7 +1889,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V1.2',
+    version: 'V1.9',
     exportedAt: Date.now(),
     productCatalog: productCatalog,
     movimientos: loadMovimientos()
@@ -1686,13 +1915,43 @@ function importBackupFile(file){
       let addedCatalog = 0;
       let addedMovimientos = 0;
 
+      let barcodesMerged = 0;
+      const backupBarcodeConflicts = [];
+
       // Respaldo nuevo (V1.2+): productCatalog + movimientos
+      // Se FUSIONA con lo que ya hay: así un celular puede recibir los códigos de barras
+      // que se vincularon en el otro, aunque ya tenga el producto (ej. por la Lista General).
       if(data.productCatalog && typeof data.productCatalog === 'object'){
-        Object.keys(data.productCatalog).forEach(code => {
-          if(!(code in productCatalog)){
-            productCatalog[code] = data.productCatalog[code];
+        rebuildBarcodeIndex();
+        const officialNorm = officialCodesNorm();
+        Object.keys(data.productCatalog).forEach(originalCode => {
+          const incoming = data.productCatalog[originalCode] || {};
+          // Un código mal leído por versiones anteriores va directo a su producto correcto
+          const code = (!(originalCode in productCatalog) && findRepairTarget(originalCode, officialNorm)) || originalCode;
+          const isNew = !(code in productCatalog);
+          if(isNew){
+            productCatalog[code] = { name: incoming.name || '', description: incoming.description || '', location: incoming.location || '', barcodes: [] };
+            if(incoming.packSize) productCatalog[code].packSize = incoming.packSize;
             addedCatalog++;
+          } else {
+            const p = productCatalog[code];
+            if(!p.name && incoming.name) p.name = incoming.name;
+            if(!p.description && incoming.description) p.description = incoming.description;
+            if(!p.location && incoming.location) p.location = incoming.location;
+            if((!p.packSize || p.packSize === 1) && incoming.packSize > 1) p.packSize = incoming.packSize;
           }
+          const target = productCatalog[code];
+          if(incoming.fromExcel) target.fromExcel = true;
+          if(!Array.isArray(target.barcodes)) target.barcodes = [];
+          (incoming.barcodes || []).forEach(bc => {
+            const owner = barcodeIndex[bc];
+            if(owner && owner !== code && productCatalog[owner]){ backupBarcodeConflicts.push(bc); return; }
+            if(!target.barcodes.includes(bc)){
+              target.barcodes.push(bc);
+              barcodeIndex[bc] = code;
+              if(!isNew) barcodesMerged++;
+            }
+          });
         });
         saveProductCatalog();
         rebuildBarcodeIndex();
@@ -1701,6 +1960,7 @@ function importBackupFile(file){
         const existing = loadMovimientos();
         const existingIds = new Set(existing.map(d => d.id));
         const nuevos = data.movimientos.filter(d => d && d.id && !existingIds.has(d.id));
+        nuevos.forEach(d => { d.client = cleanClientName(d.client); });
         addedMovimientos = nuevos.length;
         saveMovimientosList(existing.concat(nuevos));
       }
@@ -1726,9 +1986,15 @@ function importBackupFile(file){
         saveMovimientosList(existing.concat(nuevos));
       }
 
+      const repair = repairTruncatedCodes();
       renderCatalogStatus();
       renderInicioStats();
-      statusEl.textContent = 'Importado: ' + addedCatalog + ' producto(s) nuevos, ' + addedMovimientos + ' movimiento(s) nuevos.';
+      let msg = 'Importado: ' + addedCatalog + ' producto(s) nuevos, ' + addedMovimientos + ' movimiento(s) nuevos';
+      if(barcodesMerged) msg += ', ' + barcodesMerged + ' código(s) de barras agregados a productos que ya tenías';
+      msg += '.';
+      if(repair.merged.length) msg += ' Se corrigieron ' + repair.merged.length + ' código(s) mal leídos por versiones anteriores (' + repair.merged.join(', ') + ').';
+      if(backupBarcodeConflicts.length) msg += ' ⚠ ' + backupBarcodeConflicts.length + ' código(s) de barras ya estaban en otro producto y no se cambiaron: ' + backupBarcodeConflicts.slice(0, 5).join(', ') + (backupBarcodeConflicts.length > 5 ? '…' : '') + '.';
+      statusEl.textContent = msg;
     }catch(e){
       statusEl.textContent = 'No se pudo leer este archivo de respaldo (' + e.message + ').';
     }
@@ -1859,15 +2125,217 @@ setupMovimientoListEvents('recepciones-list', renderRecepcionesList);
 document.getElementById('despachos-search').addEventListener('input', renderDespachosList);
 document.getElementById('recepciones-search').addEventListener('input', renderRecepcionesList);
 
-function downloadCsv(filename, rows){
-  // Punto y coma: así Excel en español separa las columnas en vez de dejar todo en la columna A
-  function csvEscape(value){
-    const str = String(value === undefined || value === null ? '' : value);
-    if(/[";\n\r]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
-    return str;
+// --- Exportar despachos / recepciones a Excel (.xlsx real, no CSV) ---
+// Un CSV con comas se abre todo en una columna en Excel configurado en español (usa ";").
+// Por eso se genera un .xlsx con dos hojas listas para filtros y tablas dinámicas:
+//   1) Resumen: una fila por despacho/recepción
+//   2) Detalle: una fila por producto
+const EXCELJS_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
+  'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'
+];
+
+function loadScriptOnce(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => { s.remove(); reject(new Error('No se pudo cargar ' + src)); };
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureExcelJS(){
+  if(window.ExcelJS) return true;
+  for(const src of EXCELJS_URLS){
+    try{ await loadScriptOnce(src); if(window.ExcelJS) return true; }catch(e){ /* probar el siguiente */ }
   }
-  const csvContent = rows.map(r => r.map(csvEscape).join(';')).join('\r\n');
-  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  return false;
+}
+
+// Excel guarda fechas sin zona horaria: armamos la fecha con la hora local de Perú.
+function excelLocalDate(ts){
+  const d = new Date(ts);
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+function excelLocalTime(ts){
+  const d = new Date(ts);
+  return (d.getHours() * 60 + d.getMinutes()) / 1440; // fracción del día = hora en Excel
+}
+function parseDocDate(s){
+  const m = String(s || '').trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if(!m) return (s || '').toString();
+  let y = parseInt(m[3], 10);
+  if(y < 100) y += 2000;
+  return new Date(Date.UTC(y, parseInt(m[2], 10) - 1, parseInt(m[1], 10)));
+}
+function itemEstado(i){
+  if(i.picked > i.qty) return 'EXCESO';
+  if(i.picked < i.qty) return 'PENDIENTE';
+  return 'OK';
+}
+function round2(n){ return Math.round((Number(n) || 0) * 100) / 100; }
+
+function buildMovimientosExportData(list, isRecepcion){
+  const contraparte = isRecepcion ? 'Proveedor' : 'Cliente';
+  const docLabel = isRecepcion ? 'N° orden / guía' : 'N° cotización';
+  const docDateLabel = isRecepcion ? 'Fecha documento' : 'Fecha cotización';
+  const sorted = list.slice().sort((a, b) => (a.verifiedAt || 0) - (b.verifiedAt || 0));
+
+  const DATE = 'dd/mm/yyyy', TIME = 'hh:mm', INT = '#,##0', MONEY = '#,##0.00', DIFF_INT = '+#,##0;[Red]-#,##0;0', DIFF_MONEY = '+#,##0.00;[Red]-#,##0.00;0.00';
+
+  const summaryCols = [
+    { header: 'Fecha verificación', width: 13, fmt: DATE },
+    { header: 'Hora', width: 7, fmt: TIME },
+    { header: docLabel, width: 15 },
+    { header: docDateLabel, width: 13, fmt: DATE },
+    { header: contraparte, width: 36 },
+    { header: 'Verificado por', width: 16 },
+    { header: 'Líneas', width: 8, fmt: INT },
+    { header: 'Líneas OK', width: 9, fmt: INT },
+    { header: 'Líneas pendientes', width: 11, fmt: INT },
+    { header: 'Líneas con exceso', width: 11, fmt: INT },
+    { header: 'Unid. pedidas', width: 10, fmt: INT },
+    { header: 'Unid. verificadas', width: 11, fmt: INT },
+    { header: 'Valor pedido S/', width: 13, fmt: MONEY },
+    { header: 'Valor verificado S/', width: 14, fmt: MONEY },
+    { header: 'Diferencia S/', width: 12, fmt: DIFF_MONEY },
+    { header: 'Estado', width: 19, estado: true }
+  ];
+  const detailCols = [
+    { header: 'Fecha verificación', width: 13, fmt: DATE },
+    { header: 'Hora', width: 7, fmt: TIME },
+    { header: docLabel, width: 15 },
+    { header: contraparte, width: 32 },
+    { header: 'Verificado por', width: 16 },
+    { header: 'Ítem', width: 6, fmt: INT, center: true },
+    { header: 'Código', width: 24 },
+    { header: 'Descripción', width: 46 },
+    { header: 'Modelo', width: 30 },
+    { header: 'Cant. pedida', width: 10, fmt: INT },
+    { header: 'Cant. verificada', width: 11, fmt: INT },
+    { header: 'Diferencia', width: 10, fmt: DIFF_INT },
+    { header: 'Precio unit. S/', width: 12, fmt: MONEY },
+    { header: 'Subtotal pedido S/', width: 14, fmt: MONEY },
+    { header: 'Subtotal verificado S/', width: 15, fmt: MONEY },
+    { header: 'Estado', width: 13, estado: true }
+  ];
+
+  const summaryRows = [];
+  const detailRows = [];
+  sorted.forEach(d => {
+    const items = d.items || [];
+    const fecha = excelLocalDate(d.verifiedAt);
+    const hora = excelLocalTime(d.verifiedAt);
+    let ok = 0, pend = 0, exc = 0, uPed = 0, uVer = 0, vPed = 0, vVer = 0;
+    items.forEach((i, idx) => {
+      const price = Number(i.price) || 0;
+      const estado = itemEstado(i);
+      if(estado === 'OK') ok++; else if(estado === 'PENDIENTE') pend++; else exc++;
+      uPed += i.qty || 0; uVer += i.picked || 0;
+      vPed += (i.qty || 0) * price; vVer += (i.picked || 0) * price;
+      const catCode = findCatalogCode(i.code);
+      const modelo = catCode ? (productCatalog[catCode].description || '') : '';
+      detailRows.push([
+        fecha, hora, d.quoteNumber || '', d.client || '', d.verifiedBy || '',
+        idx + 1, i.code || '', i.name || '', modelo,
+        i.qty || 0, i.picked || 0, (i.picked || 0) - (i.qty || 0),
+        round2(price), round2((i.qty || 0) * price), round2((i.picked || 0) * price), estado
+      ]);
+    });
+    summaryRows.push([
+      fecha, hora, d.quoteNumber || '', parseDocDate(d.quoteDate), d.client || '', d.verifiedBy || '',
+      items.length, ok, pend, exc, uPed, uVer, round2(vPed), round2(vVer), round2(vVer - vPed),
+      (pend === 0 && exc === 0) ? 'COMPLETO' : 'CON DIFERENCIAS'
+    ]);
+  });
+
+  return {
+    sheets: [
+      { name: 'Resumen', cols: summaryCols, rows: summaryRows },
+      { name: 'Detalle', cols: detailCols, rows: detailRows }
+    ]
+  };
+}
+
+const ESTADO_STYLE = {
+  'OK':              { fill: 'FFEAF3DE', font: 'FF27500A' },
+  'COMPLETO':        { fill: 'FFEAF3DE', font: 'FF27500A' },
+  'PENDIENTE':       { fill: 'FFFAEEDA', font: 'FF633806' },
+  'CON DIFERENCIAS': { fill: 'FFFAEEDA', font: 'FF633806' },
+  'EXCESO':          { fill: 'FFFCEBEB', font: 'FF791F1F' }
+};
+
+async function buildStyledWorkbook(data){
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Verificador de pedidos - Rios Performance';
+  wb.created = new Date();
+  data.sheets.forEach(sh => {
+    const ws = wb.addWorksheet(sh.name, {
+      views: [{ state: 'frozen', ySplit: 1 }],
+      pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:1' }
+    });
+    ws.columns = sh.cols.map(c => ({ header: c.header, width: c.width }));
+    sh.rows.forEach(r => ws.addRow(r));
+
+    const header = ws.getRow(1);
+    header.height = 32;
+    header.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF185FA5' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FF0E3F70' } } };
+    });
+
+    sh.cols.forEach((c, idx) => {
+      const col = ws.getColumn(idx + 1);
+      if(c.fmt) col.numFmt = c.fmt;
+      if(c.center || c.fmt === 'dd/mm/yyyy' || c.fmt === 'hh:mm') col.alignment = { horizontal: 'center' };
+      if(c.estado){
+        col.eachCell((cell, rowNumber) => {
+          if(rowNumber === 1) return;
+          const st = ESTADO_STYLE[cell.value];
+          if(st){
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: st.fill } };
+            cell.font = { bold: true, color: { argb: st.font } };
+          }
+          cell.alignment = { horizontal: 'center' };
+        });
+      }
+    });
+    // Encabezado vuelve a su formato (numFmt/alineación de columna no deben pisarlo)
+    header.eachCell(cell => { cell.numFmt = '@'; cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }; });
+
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: sh.cols.length } };
+  });
+  return wb.xlsx.writeBuffer();
+}
+
+// Respaldo sin estilos (si no hay internet para cargar ExcelJS): columnas igual separadas.
+function buildPlainWorkbookBlob(data){
+  const wb = XLSX.utils.book_new();
+  // Fechas como número de serie de Excel (si se pasan como Date, SheetJS las corre un día en Perú)
+  const toSerial = v => (v instanceof Date) ? v.getTime() / 86400000 + 25569 : v;
+  data.sheets.forEach(sh => {
+    const aoa = [sh.cols.map(c => c.header)].concat(sh.rows.map(r => r.map(toSerial)));
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = sh.cols.map(c => ({ wch: c.width }));
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: sh.cols.length - 1 } }) };
+    // formatos de número/fecha
+    for(let r = 1; r < aoa.length; r++){
+      sh.cols.forEach((c, ci) => {
+        if(!c.fmt) return;
+        const cell = ws[XLSX.utils.encode_cell({ r: r, c: ci })];
+        if(cell) cell.z = c.fmt;
+      });
+    }
+    XLSX.utils.book_append_sheet(wb, ws, sh.name);
+  });
+  const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function downloadBlob(blob, filename){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1875,63 +2343,36 @@ function downloadCsv(filename, rows){
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function estadoLinea(i){
-  if(i.picked > i.qty) return 'EXCESO';
-  if(i.picked < i.qty) return 'FALTANTE';
-  return 'OK';
-}
-
-// Genera un libro de Excel con dos hojas: «Resumen» (una fila por documento) y «Detalle» (una fila por producto)
-function exportMovimientosExcel(list, contraparteLabel, baseName){
-  const hoy = new Date().toISOString().slice(0, 10);
-  const resumen = [['Fecha', 'Hora', 'N° documento', contraparteLabel, 'Verificado por', 'Líneas', 'Unidades pedidas', 'Unidades verificadas', 'Líneas con diferencia', 'Valor de la diferencia (S/)', 'Resultado']];
-  const detalle = [['Fecha', 'Hora', 'N° documento', contraparteLabel, 'Verificado por', 'Código', 'Producto', 'Cant. pedida', 'Cant. verificada', 'Diferencia', 'Estado', 'Precio unitario (S/)', 'Valor de la diferencia (S/)']];
-
-  list.slice().sort((a, b) => (b.verifiedAt || 0) - (a.verifiedAt || 0)).forEach(d => {
-    const f = new Date(d.verifiedAt);
-    const fecha = f.toLocaleDateString('es-PE');
-    const hora = f.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
-    let pedidas = 0, verificadas = 0, conDif = 0, valorDif = 0;
-    d.items.forEach(i => {
-      const dif = (i.picked || 0) - (i.qty || 0);
-      const valor = Math.round(dif * (i.price || 0) * 100) / 100;
-      pedidas += i.qty || 0; verificadas += i.picked || 0;
-      if(dif !== 0){ conDif++; valorDif += valor; }
-      detalle.push([fecha, hora, d.quoteNumber || '', d.client || '', d.verifiedBy || '', i.code || '', i.name || '', i.qty || 0, i.picked || 0, dif, estadoLinea(i), i.price || 0, valor]);
-    });
-    resumen.push([fecha, hora, d.quoteNumber || '', d.client || '', d.verifiedBy || '', d.items.length, pedidas, verificadas, conDif, Math.round(valorDif * 100) / 100, conDif === 0 ? 'Completo' : 'Con diferencias']);
-  });
-
-  if(typeof XLSX === 'undefined'){
-    // Sin el lector de Excel (sin internet): CSV separado por punto y coma, una sola hoja
-    downloadCsv(baseName + '_' + hoy + '.csv', detalle);
-    return;
+async function exportMovimientosXlsx(list, isRecepcion, filename, button){
+  if(list.length === 0) return;
+  const originalText = button ? button.textContent : '';
+  if(button){ button.disabled = true; button.textContent = 'Preparando Excel...'; }
+  try{
+    const data = buildMovimientosExportData(list, isRecepcion);
+    let blob;
+    if(await ensureExcelJS()){
+      const buffer = await buildStyledWorkbook(data);
+      blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    } else {
+      blob = buildPlainWorkbookBlob(data);
+    }
+    downloadBlob(blob, filename);
+  }catch(err){
+    alert('No se pudo generar el Excel: ' + (err.message || err));
+  }finally{
+    if(button){ button.disabled = false; button.textContent = originalText; }
   }
-  const wb = XLSX.utils.book_new();
-  const wsRes = XLSX.utils.aoa_to_sheet(resumen);
-  wsRes['!cols'] = [{wch:12},{wch:8},{wch:16},{wch:30},{wch:18},{wch:8},{wch:16},{wch:18},{wch:18},{wch:22},{wch:16}];
-  wsRes['!autofilter'] = { ref: wsRes['!ref'] };
-  const wsDet = XLSX.utils.aoa_to_sheet(detalle);
-  wsDet['!cols'] = [{wch:12},{wch:8},{wch:16},{wch:30},{wch:18},{wch:18},{wch:50},{wch:12},{wch:14},{wch:11},{wch:11},{wch:16},{wch:22}];
-  wsDet['!autofilter'] = { ref: wsDet['!ref'] };
-  XLSX.utils.book_append_sheet(wb, wsRes, 'Resumen');
-  XLSX.utils.book_append_sheet(wb, wsDet, 'Detalle');
-  XLSX.writeFile(wb, baseName + '_' + hoy + '.xlsx');
 }
 
 document.getElementById('btn-export-despachos-csv').addEventListener('click', function(){
-  const list = loadDespachos();
-  if(list.length === 0) return;
-  exportMovimientosExcel(list, 'Cliente', 'despachos');
+  exportMovimientosXlsx(loadDespachos(), false, 'despachos_' + new Date().toISOString().slice(0, 10) + '.xlsx', this);
 });
 
 document.getElementById('btn-export-recepciones-csv').addEventListener('click', function(){
-  const list = loadRecepciones();
-  if(list.length === 0) return;
-  exportMovimientosExcel(list, 'Proveedor', 'recepciones');
+  exportMovimientosXlsx(loadRecepciones(), true, 'recepciones_' + new Date().toISOString().slice(0, 10) + '.xlsx', this);
 });
 
 // --- Página Métricas ---
@@ -2158,157 +2599,178 @@ async function importCatalogFromPdf(file){
 }
 
 // --- Importar catálogo desde Excel / CSV ---
+// Formato principal: "Lista General de productos" con columnas DESCRIPCION, CÓDIGO y MODELO.
+//   DESCRIPCION -> nombre del producto (lo que se muestra en el pedido)
+//   MODELO      -> campo "Modelo(s)" del catálogo
+//   CÓDIGO      -> código interno (clave del catálogo)
+// Si el archivo trae una columna de código de barras (BARRA / EAN / UPC), también se vincula.
 function normHeader(h){
-  return (h === undefined || h === null ? '' : String(h)).toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  return String(h == null ? '' : h).normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/\s+/g, ' ').trim();
 }
 
-// Reconoce las columnas por su título (sin importar tildes/mayúsculas ni el orden).
-// Cada campo toma la PRIMERA columna que calza y una columna nunca se usa dos veces,
-// así "Código de barras" no pisa a "Código de referencia" ni "Nombre de archivo de foto" a "Nombre".
-function detectExcelColumns(headerRow){
-  const map = {};
-  const norm = (headerRow || []).map(normHeader);
-  const usado = function(i){ return Object.keys(map).some(k => map[k] === i); };
-  const claim = function(field, test){
-    if(map[field] !== undefined) return;
-    for(let i = 0; i < norm.length; i++){
-      if(!norm[i] || usado(i)) continue;
-      if(test(norm[i])){ map[field] = i; return; }
-    }
-  };
-  claim('barcode', h => /barra|barcode|\bean\b|\bupc\b|gtin/.test(h));
-  claim('code', h => /^(codigo|cod\.?|sku)( de)?( referencia| referencial| interno| producto| articulo| item)?$|^referencia$|^cod\.? ref|^codigo ref/.test(h));
-  claim('name', h => /^(nombre|producto|articulo)( del producto| del articulo)?$/.test(h));
-  claim('description', h => /descrip/.test(h));
-  claim('model', h => /^modelo|^modelos|compatib|^moto/.test(h));
-  claim('color', h => /^color/.test(h));
-  claim('location', h => /ubicacion|estante|^ubic/.test(h));
-  // Segunda pasada, más flexible, para lo que no se encontró
-  claim('code', h => /codigo|\bcod\b|\bsku\b|referencia/.test(h) && !/barra|archivo|foto|imagen/.test(h));
-  claim('name', h => /nombre|producto|articulo/.test(h) && !/archivo|foto|imagen/.test(h));
-  return map;
-}
-
-// Busca la fila de títulos entre las primeras 15 filas (por si el archivo trae un encabezado arriba)
-function findExcelHeader(rows){
-  let best = { idx: -1, map: {}, score: 0 };
-  const limit = Math.min(rows.length, 15);
-  for(let i = 0; i < limit; i++){
-    const map = detectExcelColumns(rows[i]);
-    const keys = Object.keys(map);
-    if(keys.length < 2 || (map.code === undefined && map.name === undefined)) continue;
-    const score = keys.length + (map.code !== undefined ? 1 : 0) + (map.name !== undefined ? 1 : 0);
-    if(score > best.score) best = { idx: i, map: map, score: score };
+function detectCatalogColumns(headerRow){
+  const cols = { code: -1, name: -1, model: -1, barcode: -1 };
+  const headers = headerRow.map(normHeader);
+  headers.forEach((n, idx) => {
+    if(!n) return;
+    if(cols.barcode < 0 && /BARRA|\bEAN\b|\bUPC\b|BARCODE|GTIN/.test(n)){ cols.barcode = idx; return; }
+    if(cols.code < 0 && /^(CODIGO|COD\.?|CODIGO INTERNO|CODIGO DEL PRODUCTO|CODIGO PRODUCTO|SKU)$/.test(n)){ cols.code = idx; return; }
+    if(cols.name < 0 && /^(DESCRIPCION|DESCRIPCION DEL PRODUCTO|NOMBRE|NOMBRE DEL PRODUCTO|PRODUCTO|ARTICULO)$/.test(n)){ cols.name = idx; return; }
+    if(cols.model < 0 && /^(MODELO|MODELOS|MODELO\(S\)|COMPATIBILIDAD|APLICACION)$/.test(n)){ cols.model = idx; return; }
+  });
+  // Segunda pasada, más flexible, solo para el código
+  if(cols.code < 0){
+    cols.code = headers.findIndex((n, idx) => idx !== cols.barcode && /^COD/.test(n) && !/LIMPIO|BARRA/.test(n));
   }
+  return cols;
+}
+
+// Texto de una celda tal como se ve en Excel, sin perder ceros a la izquierda
+// ni convertir códigos numéricos largos a notación científica.
+function excelCellText(sheet, r, c){
+  const cell = sheet[XLSX.utils.encode_cell({ r: r, c: c })];
+  if(!cell || cell.v === undefined || cell.v === null) return '';
+  if(cell.t === 'n'){
+    if(Number.isInteger(cell.v)){
+      if(cell.w && /^0\d+$/.test(cell.w.trim())) return cell.w.trim(); // ej. formato "00000"
+      return String(cell.v);
+    }
+    return (cell.w || String(cell.v)).trim();
+  }
+  return String(cell.w !== undefined && cell.t !== 's' ? cell.w : cell.v).replace(/\s+/g, ' ').trim();
+}
+
+// Busca en todas las hojas la tabla que mejor parece un catálogo.
+function findCatalogTable(workbook){
+  let best = null;
+  workbook.SheetNames.forEach(sheetName => {
+    const sheet = workbook.Sheets[sheetName];
+    if(!sheet || !sheet['!ref']) return;
+    const range = XLSX.utils.decode_range(sheet['!ref']);
+    const lastHeaderRow = Math.min(range.e.r, range.s.r + 15);
+    for(let r = range.s.r; r <= lastHeaderRow; r++){
+      const header = [];
+      for(let c = range.s.c; c <= range.e.c; c++) header[c] = excelCellText(sheet, r, c);
+      const cols = detectCatalogColumns(header);
+      if(cols.code < 0) continue;
+      const score = 1 + (cols.name >= 0 ? 1 : 0) + (cols.model >= 0 ? 1 : 0) + (cols.barcode >= 0 ? 0.5 : 0);
+      if(!best || score > best.score) best = { sheetName, sheet, headerRow: r, cols, score, range };
+      break;
+    }
+  });
   return best;
 }
 
-function excelCell(row, idx){
-  if(idx === undefined) return '';
-  const v = row[idx];
-  return (v === undefined || v === null) ? '' : String(v).trim();
+function splitBarcodes(text){
+  return String(text || '').split(/[\s,;\/|]+/).map(s => s.trim()).filter(s => s.length >= 4);
 }
 
 async function importCatalogFromExcel(file){
   const status = document.getElementById('catalog-excel-status');
-  status.style.whiteSpace = 'pre-line';
-  status.textContent = 'Leyendo el archivo...';
+  status.textContent = 'Leyendo el archivo... si tiene imágenes puede tardar unos segundos, no cierres la app.';
+  await new Promise(r => setTimeout(r, 60)); // deja que el mensaje se pinte antes del trabajo pesado
   try{
     if(typeof XLSX === 'undefined'){
       throw new Error('No se pudo cargar el lector de Excel (revisa tu conexión a internet)');
     }
     const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellHTML: false, cellFormula: false, cellStyles: false });
+    const table = findCatalogTable(workbook);
 
-    let added = 0, updated = 0, skipped = 0, filasLeidas = 0, barcodesNuevos = 0;
-    const conflictos = [];
-    const detalleHojas = [];
+    if(!table){
+      status.textContent = 'No encontré una columna de CÓDIGO en el archivo. La primera fila de la tabla debe tener los títulos (ej: DESCRIPCION, CÓDIGO, MODELO).';
+      return;
+    }
 
-    workbook.SheetNames.forEach(function(sheetName, sheetIdx){
-      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', blankrows: false });
-      if(rows.length === 0) return;
+    const { sheet, cols, headerRow, range } = table;
+    let added = 0, updated = 0, unchanged = 0, noCode = 0, skippedUnknown = 0;
+    let barcodesLinked = 0;
+    const barcodeConflicts = [];
+    let emptyStreak = 0;
 
-      let header = findExcelHeader(rows);
-      let map, dataRows, usoPorDefecto = false;
-      if(header.idx >= 0){
-        map = header.map;
-        dataRows = rows.slice(header.idx + 1);
-      } else if(sheetIdx === 0){
-        // Sin títulos reconocibles: orden por defecto A=nombre, B=descripción, C=código
-        map = { name: 0, description: 1, code: 2 };
-        dataRows = rows;
-        usoPorDefecto = true;
-      } else {
-        return; // hojas extra sin formato reconocible se ignoran
-      }
-
-      const etiquetas = header.idx >= 0 ? rows[header.idx] : [];
-      const nombresCol = { code: 'Código', barcode: 'Código de barras', name: 'Nombre', description: 'Descripción', model: 'Modelo', color: 'Color', location: 'Ubicación' };
-      const detectadas = Object.keys(nombresCol).filter(k => map[k] !== undefined)
-        .map(k => nombresCol[k] + ' ← «' + (usoPorDefecto ? ('columna ' + String.fromCharCode(65 + map[k])) : excelCell(etiquetas, map[k])) + '»');
-      detalleHojas.push('Hoja «' + sheetName + '»: ' + detectadas.join(' · ') + (usoPorDefecto ? ' (sin títulos: se usó el orden A=nombre, B=descripción, C=código)' : ''));
-
-      dataRows.forEach(function(row){
-        filasLeidas++;
-        const code = excelCell(row, map.code);
-        const barcodes = excelCell(row, map.barcode).split(/[;,|\s]+/).filter(Boolean);
-        const description = excelCell(row, map.description);
-        let name = excelCell(row, map.name);
-        if(!name && description) name = description;
-        const model = excelCell(row, map.model);
-        const color = excelCell(row, map.color);
-        const location = excelCell(row, map.location);
-
-        if(!name && !description && !code && barcodes.length === 0) return;
-        const key = code || barcodes[0] || name.slice(0, 60);
-        if(!key){ skipped++; return; }
-
-        let p = productCatalog[key];
-        const esNuevo = !p;
-        if(!p) p = productCatalog[key] = { name: '', description: '', location: '', barcodes: [] };
-        if(!p.barcodes) p.barcodes = [];
-        let cambio = esNuevo;
-        const llenar = function(campo, valor){
-          if(valor && !p[campo]){ p[campo] = valor; cambio = true; }
-        };
-        llenar('name', name);
-        llenar('description', description);
-        llenar('model', model);
-        llenar('color', color);
-        llenar('location', location);
-
-        barcodes.forEach(function(bc){
-          if(p.barcodes.includes(bc)) return;
-          const dueno = barcodeIndex[bc];
-          if((dueno && dueno !== key) || (productCatalog[bc] && bc !== key)){
-            conflictos.push(bc + ' (' + key + ' ↔ ' + (dueno || bc) + ')');
-            return;
-          }
-          p.barcodes.push(bc);
-          barcodeIndex[bc] = key;
-          barcodesNuevos++;
-          cambio = true;
+    // Códigos de barras que el MISMO archivo asigna a más de un producto: son ambiguos
+    // (al escanearlos no se sabría cuál es), así que no se vinculan a ninguno.
+    const ambiguousBarcodes = new Set();
+    if(cols.barcode >= 0){
+      const owners = {};
+      for(let r = headerRow + 1; r <= range.e.r; r++){
+        const code = excelCellText(sheet, r, cols.code);
+        if(!code) continue;
+        splitBarcodes(excelCellText(sheet, r, cols.barcode)).forEach(bc => {
+          if(owners[bc] && owners[bc] !== code) ambiguousBarcodes.add(bc);
+          else owners[bc] = code;
         });
+      }
+    }
 
-        if(cambio){ if(esNuevo) added++; else updated++; }
+    for(let r = headerRow + 1; r <= range.e.r; r++){
+      const code = excelCellText(sheet, r, cols.code);
+      const name = cols.name >= 0 ? excelCellText(sheet, r, cols.name) : '';
+      const model = cols.model >= 0 ? excelCellText(sheet, r, cols.model) : '';
+      const barcodeText = cols.barcode >= 0 ? excelCellText(sheet, r, cols.barcode) : '';
+
+      if(!code && !name && !model){
+        if(++emptyStreak > 500) break; // fin real de la tabla
+        continue;
+      }
+      emptyStreak = 0;
+      if(!code){ noCode++; continue; }
+
+      const p = productCatalog[code];
+      // Un archivo sin descripción (ej. solo códigos de barras) no crea productos sin nombre:
+      // solo completa los que ya existen.
+      if(!p && cols.name < 0){ skippedUnknown++; continue; }
+      if(!p){
+        productCatalog[code] = { name: name, description: model, location: '', barcodes: [] };
+        added++;
+      } else {
+        // El Excel es la fuente oficial: actualiza descripción y modelo,
+        // pero conserva códigos de barra, ubicación y unidades por paquete.
+        let changed = false;
+        if(name && p.name !== name){ p.name = name; changed = true; }
+        if(model && p.description !== model){ p.description = model; changed = true; }
+        if(!p.barcodes) p.barcodes = [];
+        if(changed) updated++; else unchanged++;
+      }
+      productCatalog[code].fromExcel = true;
+
+      splitBarcodes(barcodeText).forEach(bc => {
+        if(ambiguousBarcodes.has(bc)) return;
+        const owner = barcodeIndex[bc];
+        if(owner && owner !== code){ barcodeConflicts.push(bc + ' (' + owner + ' / ' + code + ')'); return; }
+        if(!productCatalog[code].barcodes.includes(bc)){
+          productCatalog[code].barcodes.push(bc);
+          barcodeIndex[bc] = code;
+          barcodesLinked++;
+        }
       });
-    });
+    }
 
     saveProductCatalog();
     rebuildBarcodeIndex();
+    const repair = repairTruncatedCodes();
+    catalogVisibleLimit = CATALOG_PAGE_SIZE;
     renderCatalogList();
     renderInicioStats();
     renderCatalogStatus();
 
-    let msg = 'Importado: ' + added + ' producto(s) nuevos, ' + updated + ' completados con datos nuevos, de ' + filasLeidas + ' fila(s) leídas'
-      + (barcodesNuevos ? ' · ' + barcodesNuevos + ' código(s) de barras vinculados' : '')
-      + (skipped ? ' · ' + skipped + ' fila(s) sin datos usables omitidas' : '') + '.';
-    if(detalleHojas.length) msg += '\n' + detalleHojas.join('\n');
-    if(conflictos.length) msg += '\n⚠ ' + conflictos.length + ' código(s) de barras no se vincularon porque ya pertenecen a otro producto: ' + conflictos.slice(0, 8).join(', ') + (conflictos.length > 8 ? '…' : '');
+    const colNames = ['CÓDIGO'];
+    if(cols.name >= 0) colNames.push('DESCRIPCIÓN');
+    if(cols.model >= 0) colNames.push('MODELO');
+    if(cols.barcode >= 0) colNames.push('CÓDIGO DE BARRAS');
+    let msg = '✓ Hoja «' + table.sheetName + '» (columnas: ' + colNames.join(', ') + '). '
+      + added + ' producto(s) nuevos, ' + updated + ' actualizados, ' + unchanged + ' sin cambios.';
+    if(noCode) msg += ' ' + noCode + ' fila(s) sin código omitidas.';
+    if(cols.barcode >= 0) msg += ' ' + barcodesLinked + ' código(s) de barras vinculados.';
+    if(ambiguousBarcodes.size) msg += ' ⚠ ' + ambiguousBarcodes.size + ' código(s) de barras aparecen en más de un producto dentro del archivo y no se vincularon (serían ambiguos al escanear).';
+    if(repair.merged.length) msg += ' Se corrigieron ' + repair.merged.length + ' código(s) mal leídos por versiones anteriores (' + repair.merged.join(', ') + ').';
+    if(barcodeConflicts.length) msg += ' ⚠ ' + barcodeConflicts.length + ' código(s) de barras ya estaban en otro producto y no se cambiaron: ' + barcodeConflicts.slice(0, 5).join('; ') + (barcodeConflicts.length > 5 ? '…' : '') + '.';
+    if(cols.name < 0) msg += ' ⚠ No encontré la columna DESCRIPCION, así que no se crearon productos nuevos'
+      + (skippedUnknown ? ' (' + skippedUnknown + ' código(s) del archivo no están en tu catálogo y se omitieron)' : '') + '.';
     status.textContent = msg;
   }catch(err){
-    status.textContent = 'No se pudo leer el archivo (' + (err.message || err) + '). Revisa que sea un .xlsx, .xls o .csv válido.';
+    status.textContent = 'No se pudo leer el archivo (' + (err.message || err) + '). Revisa que sea un .xlsx, .xls o .csv válido. Si el archivo es muy pesado (muchas imágenes) y el celular se queda pegado, prueba con una copia sin imágenes.';
   }
 }
 
@@ -2333,6 +2795,8 @@ document.getElementById('catalog-pdf-input').addEventListener('change', function
 // --- Renderizado del catálogo ---
 // --- Catálogo: alerta de "sin código de barras", agregar código y eliminar con confirmación ---
 let catalogBarcodeFilter = 'all'; // 'all' | 'sin' | 'con'
+const CATALOG_PAGE_SIZE = 50;      // con miles de productos, dibujar todos a la vez traba el celular
+let catalogVisibleLimit = CATALOG_PAGE_SIZE;
 let catalogUI = { adding: null, confirm: null, msg: '', value: '' }; // tarjeta con formulario/confirmación abierta
 
 function catalogHasBarcode(code){
@@ -2389,15 +2853,11 @@ function buildCatalogCard(code){
       + '<button type="button" data-action="cancel-confirm" style="flex:1;">Cancelar</button></div></div>';
   } else if(catalogUI.adding === code){
     actions = '<div style="margin-top:6px;">'
-      + '<div style="display:flex; gap:6px; margin-bottom:6px;">'
-        + '<button type="button" class="btn-secondary" data-action="scan-barcode-camera" style="flex:1;">📷 Escanear con cámara</button>'
-        + '<button type="button" class="btn-secondary" data-action="use-barcode-reader" style="flex:1;">🔫 Usar lector</button>'
-      + '</div>'
-      + '<div id="catalog-card-cam" style="display:none; width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; margin-bottom:8px;"></div>'
-      + '<p id="catalog-card-cam-msg" class="muted" style="font-size:12px; margin-bottom:6px;">Cámara, lector USB/Bluetooth o escribe el código a mano. Con cámara o lector se guarda solo al leer.</p>'
+      + '<button type="button" class="btn-primary" data-action="scan-barcode-camera" style="margin-bottom:8px;">📷 Escanear con la cámara</button>'
+      + '<label class="muted" style="display:block; margin-bottom:4px;">O usa el lector Bluetooth / escribe el código y presiona Enter</label>'
       + '<input type="text" id="catalog-barcode-input" autocomplete="off" placeholder="Código de barras" value="' + escapeAttr(catalogUI.value || '') + '" style="margin-bottom:6px;">'
       + (catalogUI.msg ? '<p style="font-size:12px; color:var(--danger-text); margin-bottom:6px;">' + escapeAttr(catalogUI.msg) + '</p>' : '')
-      + '<div style="display:flex; gap:6px;"><button type="button" class="btn-primary" data-action="save-barcode" style="flex:1;">Guardar código</button>'
+      + '<div style="display:flex; gap:6px;"><button type="button" class="btn-secondary" data-action="save-barcode" style="flex:1;">Guardar código</button>'
       + '<button type="button" data-action="cancel-add" style="flex:1;">Cancelar</button></div></div>';
   } else {
     actions = '<div style="display:flex; gap:6px; margin-top:6px;">'
@@ -2407,12 +2867,10 @@ function buildCatalogCard(code){
 
   return '<div class="despacho-card" data-code="' + escapeAttr(code) + '">'
     + '<div class="title" style="font-family:monospace; font-size:13px;">' + escapeAttr(code) + badge + '</div>'
-    + '<input type="text" data-field="name" value="' + escapeAttr(p.name || '') + '" placeholder="Nombre del producto" style="margin-bottom:6px;">'
-    + '<input type="text" data-field="description" value="' + escapeAttr(p.description || '') + '" placeholder="Descripción / modelos" style="margin-bottom:6px;">'
-    + '<div style="display:flex; gap:6px; margin-bottom:6px;">'
-      + '<input type="text" data-field="model" value="' + escapeAttr(p.model || '') + '" placeholder="Modelo de moto" style="margin:0; flex:2;">'
-      + '<input type="text" data-field="color" value="' + escapeAttr(p.color || '') + '" placeholder="Color" style="margin:0; flex:1;">'
-    + '</div>'
+    + '<label class="muted" style="display:block; margin-bottom:2px; font-size:11px;">Descripción</label>'
+    + '<input type="text" data-field="name" value="' + escapeAttr(p.name || '') + '" placeholder="Descripción del producto" style="margin-bottom:6px;">'
+    + '<label class="muted" style="display:block; margin-bottom:2px; font-size:11px;">Modelo(s)</label>'
+    + '<input type="text" data-field="description" value="' + escapeAttr(p.description || '') + '" placeholder="Modelo(s) compatibles" style="margin-bottom:6px;">'
     + '<input type="text" data-field="location" value="' + escapeAttr(p.location || '') + '" placeholder="Ubicación (ej: Estante B-2)" style="margin-bottom:6px;">'
     + '<label class="muted" style="display:block; margin-bottom:2px; font-size:12px;">Unidades por paquete (cada escaneo suma esta cantidad; déjalo en 1 si se vende suelto)</label>'
     + '<input type="number" min="1" data-field="packSize" value="' + pack + '" style="margin-bottom:6px;">'
@@ -2427,63 +2885,7 @@ function refreshCatalogCard(code){
   if(el) el.outerHTML = buildCatalogCard(code);
 }
 
-// --- Cámara / lector para agregar el código de barras desde la tarjeta del producto ---
-let cardQr = null;
-let cardCamLocked = false;
-
-async function stopCardCamera(){
-  const inst = cardQr;
-  cardQr = null;
-  if(inst){
-    try{ await inst.stop(); await inst.clear(); }catch(e){}
-  }
-  const box = document.getElementById('catalog-card-cam');
-  if(box) box.style.display = 'none';
-  const btn = document.querySelector('[data-action="scan-barcode-camera"]');
-  if(btn) btn.textContent = '📷 Escanear con cámara';
-}
-
-async function startCardCamera(code){
-  const msgEl = document.getElementById('catalog-card-cam-msg');
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    if(msgEl) msgEl.textContent = 'Este navegador no permite acceder a la cámara aquí. Abre la app desde tu link de GitHub Pages.';
-    return;
-  }
-  if(typeof Html5Qrcode === 'undefined'){
-    if(msgEl) msgEl.textContent = 'No se pudo cargar el lector de cámara. Recarga la página.';
-    return;
-  }
-  if(typeof catalogCameraActive !== 'undefined' && catalogCameraActive) await stopCatalogCamera(); // la cámara de arriba y esta no pueden usarse a la vez
-  const box = document.getElementById('catalog-card-cam');
-  if(!box) return;
-  box.style.display = 'block';
-  try{
-    cardQr = new Html5Qrcode('catalog-card-cam');
-    cardCamLocked = false;
-    await cardQr.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 260, height: 150 } },
-      function(decodedText){
-        if(cardCamLocked) return; // evita leer dos veces el mismo código
-        cardCamLocked = true;
-        const input = document.getElementById('catalog-barcode-input');
-        if(input) input.value = decodedText;
-        stopCardCamera().then(function(){ saveCatalogBarcode(code); });
-      },
-      function(){}
-    );
-    const btn = document.querySelector('[data-action="scan-barcode-camera"]');
-    if(btn) btn.textContent = '⏹ Detener cámara';
-    if(msgEl) msgEl.textContent = 'Apunta la cámara al código de barras del producto.';
-  }catch(err){
-    cardQr = null;
-    box.style.display = 'none';
-    if(msgEl) msgEl.textContent = 'No se pudo activar la cámara: ' + (err.message || err) + '.';
-  }
-}
-
 function setCatalogUI(next){
-  stopCardCamera();
   const involved = [catalogUI.adding, catalogUI.confirm && catalogUI.confirm.code];
   catalogUI = Object.assign({ adding: null, confirm: null, msg: '', value: '' }, next);
   involved.push(catalogUI.adding, catalogUI.confirm && catalogUI.confirm.code);
@@ -2500,7 +2902,7 @@ function renderCatalogList(){
   const query = document.getElementById('catalog-search').value.trim().toLowerCase();
   const codes = Object.keys(productCatalog).sort();
   let filtered = query
-    ? codes.filter(code => code.toLowerCase().includes(query) || (productCatalog[code].name || '').toLowerCase().includes(query) || (productCatalog[code].description || '').toLowerCase().includes(query) || (productCatalog[code].model || '').toLowerCase().includes(query) || (productCatalog[code].color || '').toLowerCase().includes(query))
+    ? codes.filter(code => code.toLowerCase().includes(query) || (productCatalog[code].name || '').toLowerCase().includes(query) || (productCatalog[code].description || '').toLowerCase().includes(query))
     : codes;
   if(catalogBarcodeFilter === 'sin') filtered = filtered.filter(code => !catalogHasBarcode(code));
   else if(catalogBarcodeFilter === 'con') filtered = filtered.filter(catalogHasBarcode);
@@ -2516,17 +2918,36 @@ function renderCatalogList(){
     return;
   }
 
-  const resumen = (catalogBarcodeFilter !== 'all' || query)
-    ? '<p class="muted" style="margin-bottom:8px;">Mostrando ' + filtered.length + ' producto(s).</p>' : '';
-  container.innerHTML = resumen + filtered.map(function(code){ return buildCatalogCard(code); }).join('');
+  // El producto con el formulario abierto siempre se mantiene visible
+  let visible = filtered.slice(0, catalogVisibleLimit);
+  const openCode = catalogUI.adding || (catalogUI.confirm && catalogUI.confirm.code);
+  if(openCode && filtered.includes(openCode) && !visible.includes(openCode)) visible.push(openCode);
+
+  const resumen = '<p class="muted" style="margin-bottom:8px;">'
+    + (visible.length < filtered.length
+        ? 'Mostrando ' + visible.length + ' de ' + filtered.length + ' producto(s). Usa el buscador para encontrar uno en particular.'
+        : 'Mostrando ' + filtered.length + ' producto(s).')
+    + '</p>';
+  const more = visible.length < filtered.length
+    ? '<button type="button" id="catalog-show-more" class="btn-secondary" style="margin-bottom:10px;">Ver ' + Math.min(CATALOG_PAGE_SIZE, filtered.length - visible.length) + ' más</button>'
+    : '';
+  container.innerHTML = resumen + visible.map(function(code){ return buildCatalogCard(code); }).join('') + more;
 }
 
-document.getElementById('catalog-search').addEventListener('input', renderCatalogList);
+let catalogSearchTimer = null;
+document.getElementById('catalog-search').addEventListener('input', function(){
+  clearTimeout(catalogSearchTimer);
+  catalogSearchTimer = setTimeout(function(){
+    catalogVisibleLimit = CATALOG_PAGE_SIZE;
+    renderCatalogList();
+  }, 200);
+});
 
 document.getElementById('catalog-barcode-alert').addEventListener('click', function(e){
   const btn = e.target.closest('button[data-filter]');
   if(!btn) return;
   catalogBarcodeFilter = btn.getAttribute('data-filter');
+  catalogVisibleLimit = CATALOG_PAGE_SIZE;
   renderCatalogList();
 });
 
@@ -2544,9 +2965,9 @@ document.getElementById('catalog-product-list').addEventListener('input', functi
   saveProductCatalog();
 });
 
-function saveCatalogBarcode(code){
+function saveCatalogBarcode(code, scannedValue){
   const input = document.getElementById('catalog-barcode-input');
-  const barcode = input ? input.value.trim() : '';
+  const barcode = (typeof scannedValue === 'string' ? scannedValue : (input ? input.value : '')).trim();
   const fail = function(msg){ setCatalogUI({ adding: code, msg: msg, value: barcode }); };
   const p = productCatalog[code];
   if(!p) return;
@@ -2574,6 +2995,11 @@ document.getElementById('catalog-product-list').addEventListener('keydown', func
 });
 
 document.getElementById('catalog-product-list').addEventListener('click', function(e){
+  if(e.target.closest('#catalog-show-more')){
+    catalogVisibleLimit += CATALOG_PAGE_SIZE;
+    renderCatalogList();
+    return;
+  }
   const btn = e.target.closest('button[data-action]');
   if(!btn) return;
   const card = btn.closest('.despacho-card');
@@ -2584,13 +3010,10 @@ document.getElementById('catalog-product-list').addEventListener('click', functi
 
   if(action === 'add-barcode') setCatalogUI({ adding: code });
   else if(action === 'scan-barcode-camera'){
-    if(cardQr) stopCardCamera(); else startCardCamera(code);
-  }
-  else if(action === 'use-barcode-reader'){
-    const inp = document.getElementById('catalog-barcode-input');
-    const msgEl = document.getElementById('catalog-card-cam-msg');
-    if(inp){ inp.value = ''; inp.focus(); }
-    if(msgEl) msgEl.textContent = 'Listo: escanea ahora con el lector USB/Bluetooth (el cursor está en el cuadro). Se guarda solo al leer.';
+    const p = productCatalog[code] || {};
+    openBarcodeScanner('Código de barras de: ' + (p.name || code), function(scanned){
+      saveCatalogBarcode(code, scanned);
+    });
   }
   else if(action === 'cancel-add' || action === 'cancel-confirm') setCatalogUI({});
   else if(action === 'save-barcode') saveCatalogBarcode(code);
@@ -2633,7 +3056,7 @@ async function startCatalogCamera(){
     return;
   }
   try{
-    catalogQrCode = new Html5Qrcode('catalog-camera-preview');
+    catalogQrCode = new Html5Qrcode('catalog-camera-preview', barcodeScannerConfig());
     document.getElementById('catalog-camera-preview').style.display = 'block';
     await catalogQrCode.start(
       { facingMode: 'environment' },
@@ -2664,6 +3087,79 @@ async function stopCatalogCamera(){
   document.getElementById('catalog-camera-preview').style.display = 'none';
   document.getElementById('catalog-camera-toggle-btn').textContent = 'Escanear con cámara';
 }
+
+// --- Escáner en ventana superpuesta (para asignar un código de barras a un producto) ---
+// Configuración común: formatos de códigos de barra de productos + lector nativo del
+// celular cuando existe (Chrome en Android), que es más rápido y preciso para EAN/UPC.
+function barcodeScannerConfig(){
+  const F = Html5QrcodeSupportedFormats;
+  return {
+    formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.CODABAR, F.QR_CODE],
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    verbose: false
+  };
+}
+function barcodeQrBox(viewW, viewH){
+  // Caja ancha y baja: es la forma de un código de barras
+  const w = Math.max(160, Math.floor(viewW * 0.85));
+  const h = Math.max(80, Math.floor(Math.min(viewH * 0.5, w * 0.45)));
+  return { width: w, height: h };
+}
+
+let modalQrCode = null;
+let modalScanHandled = false;
+
+async function openBarcodeScanner(title, onResult){
+  const modal = document.getElementById('scan-modal');
+  const status = document.getElementById('scan-modal-status');
+  document.getElementById('scan-modal-title').textContent = title || 'Escanear código de barras';
+  status.textContent = 'Apunta la cámara al código de barras, bien iluminado y sin reflejos.';
+  modal.classList.remove('hidden');
+  modalScanHandled = false;
+
+  // Solo una cámara a la vez
+  if(typeof cameraActive !== 'undefined' && cameraActive) await stopCamera();
+  if(typeof catalogCameraActive !== 'undefined' && catalogCameraActive) await stopCatalogCamera();
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    status.textContent = 'Este navegador no permite usar la cámara aquí. Abre la app desde su link (https://…github.io) en Chrome.';
+    return;
+  }
+  if(typeof Html5Qrcode === 'undefined'){
+    status.textContent = 'No se pudo cargar el lector de cámara. Revisa la conexión y recarga la página.';
+    return;
+  }
+  try{
+    modalQrCode = new Html5Qrcode('scan-modal-preview', barcodeScannerConfig());
+    await modalQrCode.start(
+      { facingMode: 'environment' },
+      { fps: 12, qrbox: barcodeQrBox },
+      async function(decodedText){
+        if(modalScanHandled) return;
+        modalScanHandled = true;
+        if(navigator.vibrate) navigator.vibrate(80);
+        await closeBarcodeScanner();
+        onResult((decodedText || '').trim());
+      },
+      function(){}
+    );
+  }catch(err){
+    modalQrCode = null;
+    status.textContent = 'No se pudo activar la cámara: ' + ((err && err.message) || err) + '. Revisa que la app tenga permiso de cámara.';
+  }
+}
+
+async function closeBarcodeScanner(){
+  const qr = modalQrCode;
+  modalQrCode = null;
+  if(qr){
+    try{ await qr.stop(); }catch(e){}
+    try{ qr.clear(); }catch(e){}
+  }
+  document.getElementById('scan-modal').classList.add('hidden');
+}
+
+document.getElementById('scan-modal-close').addEventListener('click', closeBarcodeScanner);
 
 function showCatalogForm(barcode, internalCode, name, location, isExisting){
   document.getElementById('catalog-scanned-code').textContent =
@@ -2697,7 +3193,6 @@ document.getElementById('catalog-camera-toggle-btn').addEventListener('click', a
   if(catalogCameraActive){
     await stopCatalogCamera();
   } else {
-    await stopCardCamera();
     await startCatalogCamera();
   }
 });
