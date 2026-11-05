@@ -237,14 +237,14 @@ button:active{ transform:scale(0.98); }
   <div id="page-despachos" class="hidden">
     <p class="muted" style="margin-bottom:10px;">Los despachos se guardan aquí de forma indefinida. Solo se eliminan si tú los borras manualmente.</p>
     <input type="text" id="despachos-search" placeholder="Buscar por cliente o N° de cotización" style="margin-bottom:8px;">
-    <button type="button" id="btn-export-despachos-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel (CSV)</button>
+    <button type="button" id="btn-export-despachos-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel (.xlsx)</button>
     <div id="despachos-list"></div>
   </div>
 
   <div id="page-recepciones" class="hidden">
     <p class="muted" style="margin-bottom:10px;">Las recepciones de mercadería se guardan aquí de forma indefinida. Solo se eliminan si tú las borras manualmente.</p>
     <input type="text" id="recepciones-search" placeholder="Buscar por proveedor o N° de orden/guía" style="margin-bottom:8px;">
-    <button type="button" id="btn-export-recepciones-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel (CSV)</button>
+    <button type="button" id="btn-export-recepciones-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel (.xlsx)</button>
     <div id="recepciones-list"></div>
   </div>
 
@@ -298,7 +298,7 @@ button:active{ transform:scale(0.98); }
 
     <div class="card">
       <h2>Importar desde Excel</h2>
-      <p class="muted">Sube tu archivo de Excel (.xlsx, .xls o .csv) con nombre, descripción y código de cada producto. El precio, si lo trae, se ignora. Lo que ya existe en el catálogo no se sobreescribe.</p>
+      <p class="muted">Sube tu archivo de Excel (.xlsx, .xls o .csv). Reconoce los títulos por su nombre, en cualquier orden: <b>Código de referencia</b> (o Código), <b>Código de barras</b>, <b>Nombre</b>, <b>Descripción</b>, <b>Modelo</b>, <b>Color</b> y <b>Ubicación</b>. Lee todas las hojas con ese formato. Los precios y el stock se ignoran, y lo que ya existe en el catálogo solo se completa (no se sobreescribe).</p>
       <input type="file" id="catalog-excel-input" accept=".xlsx,.xls,.csv" class="hidden">
       <button type="button" id="btn-catalog-excel" class="btn-secondary">Subir archivo de Excel</button>
       <p id="catalog-excel-status" class="muted" style="margin-top:6px;"></p>
@@ -337,6 +337,7 @@ function showPage(pageName){
   if(pageName !== 'catalogo' && typeof catalogCameraActive !== 'undefined' && catalogCameraActive){
     stopCatalogCamera();
   }
+  if(pageName !== 'catalogo' && typeof stopCardCamera === 'function') stopCardCamera();
   document.getElementById('page-inicio').classList.toggle('hidden', pageName !== 'inicio');
   document.getElementById('page-contabilizacion').classList.toggle('hidden', pageName !== 'contabilizacion');
   document.getElementById('page-despachos').classList.toggle('hidden', pageName !== 'despachos');
@@ -634,7 +635,7 @@ if(typeof pdfjsLib !== 'undefined'){
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
-async function extractPdfLines(file){
+async function extractPdfLineObjects(file){
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const allLines = [];
@@ -642,7 +643,7 @@ async function extractPdfLines(file){
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
     const items = content.items
-      .map(it => ({ text: it.str, x: it.transform[4], y: it.transform[5] }))
+      .map(it => ({ text: it.str, x: it.transform[4], y: it.transform[5], x1: it.transform[4] + (it.width || 0), h: Math.abs(it.transform[3]) || it.height || 8 }))
       .filter(it => it.text.trim().length > 0);
     items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
     const lines = [];
@@ -658,24 +659,50 @@ async function extractPdfLines(file){
     });
     lines.forEach(line => {
       line.items.sort((a, b) => a.x - b.x);
-      const text = line.items.map(i => i.text).join(' ').replace(/\s+/g, ' ').trim();
-      if(text) allLines.push(text);
+      // Si dos trozos de texto casi se tocan (un código largo partido por el PDF), se pegan sin espacio
+      let text = '';
+      line.items.forEach((it, idx) => {
+        if(idx === 0){ text = it.text; return; }
+        const prev = line.items[idx - 1];
+        const gap = it.x - prev.x1;
+        const pegado = prev.x1 > prev.x && gap < Math.max(0.6, 0.12 * (prev.h || 8)) && !/\s$/.test(prev.text) && !/^\s/.test(it.text);
+        text += (pegado ? '' : ' ') + it.text;
+      });
+      text = text.replace(/\s+/g, ' ').trim();
+      if(text) allLines.push({ text: text, items: line.items });
     });
   }
   return allLines;
 }
 
+async function extractPdfLines(file){
+  const objs = await extractPdfLineObjects(file);
+  return objs.map(l => l.text);
+}
+
 const SKIP_LINE_PATTERN = /CODIGO|ARTICULO|CANT\.|U\.M\.|PRECIO|SUBTOTAL|IGV|^TOTAL|SON:|OBSERVACIONES|COTIZACI|DEVOLUCION|R\.U\.C\.|EMISI[OÓ]N|CLIENTE|VENDEDOR|COND\. VENTA|DIRECCI[OÓ]N|^ITEM$/i;
+
+// Acepta 12.50, 12,50, 1,234.50 y 1.234,50
+const DECIMAL_TOKEN_RE = /^(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)$/;
+const CODE_TOKEN_RE = /^[A-Z0-9][A-Z0-9.\-_\/+#]{2,}$/i;
+
+function tokenToNumber(tok){
+  let t = String(tok);
+  if(/^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(t)) t = t.replace(/,/g, '');
+  else if(/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
+  else t = t.replace(',', '.');
+  return parseFloat(t) || 0;
+}
 
 function popDecimalToken(tokens){
   if(tokens.length === 0) return null;
   const last = tokens[tokens.length - 1];
-  if(/^\d+(?:[.,]\d{1,2})?$/.test(last)) return tokens.pop();
+  if(DECIMAL_TOKEN_RE.test(last)) return tokens.pop();
   return null;
 }
 
 function parseLineToItem(line){
-  if(SKIP_LINE_PATTERN.test(line)) return null;
+  // Un producto se reconoce por su estructura (N° de ítem + código + cantidad + precios), no por palabras sueltas
   const tokens = line.split(/\s+/).filter(Boolean);
   if(tokens.length < 3) return null;
   if(!/^\d{1,3}$/.test(tokens[0])) return null;
@@ -683,9 +710,9 @@ function parseLineToItem(line){
   if(tokens.length < 2) return null;
 
   const codigo = tokens.shift();
-  if(codigo.length < 3 || !/^[A-Z0-9][A-Z0-9.\-_]+$/i.test(codigo)) return null;
+  if(!CODE_TOKEN_RE.test(codigo)) return null;
 
-  popDecimalToken(tokens); // precio total (descartado, no lo necesitamos)
+  const totalTok = popDecimalToken(tokens); // precio total de la línea
   if(tokens.length && tokens[tokens.length - 1] === '%'){
     tokens.pop();
     popDecimalToken(tokens); // dsc
@@ -694,20 +721,21 @@ function parseLineToItem(line){
   }
   const precioUnitario = popDecimalToken(tokens);
 
-  if(tokens.length && /^[A-ZÁÉÍÓÚÑ]{2,10}$/i.test(tokens[tokens.length - 1])){
+  if(tokens.length && /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9.\/]{0,9}$/i.test(tokens[tokens.length - 1])){
     tokens.pop(); // U.M.
   }
 
   let cant = null;
-  if(tokens.length && /^\d{1,4}$/.test(tokens[tokens.length - 1])){
+  if(tokens.length && /^\d{1,5}(?:[.,]0{1,3})?$/.test(tokens[tokens.length - 1])){
     cant = tokens.pop();
   }
 
   if(!cant || !precioUnitario) return null;
 
   const name = tokens.join(' ').trim();
-  const price = parseFloat(precioUnitario.replace(',', '.')) || 0;
-  return { code: codigo, name: name || '(sin nombre)', qty: parseInt(cant, 10) || 1, price: price };
+  const price = tokenToNumber(precioUnitario);
+  const qty = Math.round(parseFloat(cant.replace(',', '.'))) || 1;
+  return { code: codigo, name: name || '(sin nombre)', qty: qty, price: price, total: totalTok ? tokenToNumber(totalTok) : 0 };
 }
 
 function extractQuoteMetadata(lines){
@@ -723,7 +751,7 @@ function extractQuoteMetadata(lines){
 
     if(!meta.client){
       const clientMatch = line.match(/^cliente\s*:\s*(.+)$/i);
-      if(clientMatch) meta.client = clientMatch[1].trim();
+      if(clientMatch) meta.client = clientMatch[1].replace(/\s+vendedor\s*:.*$/i, '').trim();
     }
 
     if(!meta.quoteNumber){
@@ -744,45 +772,108 @@ function extractQuoteMetadata(lines){
   return meta;
 }
 
+// Ubica en la línea el texto exacto del código (aunque venga partido en trozos pegados)
+function findCodeBox(lineObj, code){
+  const items = lineObj.items;
+  for(let s = 0; s < items.length; s++){
+    let acc = '';
+    for(let e = s; e < items.length; e++){
+      acc += items[e].text.trim();
+      if(acc === code) return { x: items[s].x, x1: items[e].x1 };
+      if(!code.startsWith(acc)) break;
+    }
+  }
+  return null;
+}
+
 async function extractItemsFromPdf(file){
-  const lines = await extractPdfLines(file);
+  const lineObjs = await extractPdfLineObjects(file);
+  const lines = lineObjs.map(l => l.text);
   const metadata = extractQuoteMetadata(lines);
+
+  // Pasada 1: dónde está la columna de códigos (el código más largo la ocupa completa)
+  let colMin = Infinity, colMax = -Infinity;
+  lineObjs.forEach(lo => {
+    const parsed = parseLineToItem(lo.text);
+    if(!parsed) return;
+    const box = findCodeBox(lo, parsed.code);
+    if(box){ colMin = Math.min(colMin, box.x); colMax = Math.max(colMax, box.x1); }
+  });
+  const hasColumn = isFinite(colMin) && isFinite(colMax);
+
   const items = [];
+  const unparsed = [];
+  let sumTotals = 0;
   let lastItem = null;
 
-  lines.forEach(line => {
-    if(SKIP_LINE_PATTERN.test(line)){
+  lineObjs.forEach(lo => {
+    const line = lo.text;
+
+    const parsed = parseLineToItem(line);
+    if(!parsed && SKIP_LINE_PATTERN.test(line)){
       lastItem = null;
       return;
     }
-
-    const parsed = parseLineToItem(line);
     if(parsed){
       const item = { code: parsed.code, name: parsed.name, qty: parsed.qty, picked: 0, price: parsed.price || 0 };
       items.push(item);
+      sumTotals += parsed.total || 0;
       lastItem = item;
       return;
     }
 
-    // Línea que no calzó como producto: puede ser el resto de un código
-    // que se cortó en dos líneas dentro de su columna (ej: "A06-29OD-" + "F04"),
-    // o la continuación de una descripción larga.
-    if(!lastItem) return;
     const tokens = line.split(/\s+/).filter(Boolean);
-    if(tokens.length === 0) return;
-
-    const looksLikeCodeFragment = tokens.length <= 2
-      && tokens.every(t => /^[A-Z0-9.\-_]{1,12}$/i.test(t))
-      && tokens.some(t => /\d/.test(t));
-
-    if(looksLikeCodeFragment && /[\-._]$/.test(lastItem.code)){
-      lastItem.code = lastItem.code + tokens.join('');
-    } else {
-      lastItem.name = (lastItem.name + ' ' + line).trim();
+    // Empieza con número de ítem y trae un "%": casi seguro es un producto que no se pudo leer
+    if(tokens.length >= 3 && /^\d{1,3}$/.test(tokens[0]) && tokens.indexOf('%') !== -1){
+      unparsed.push(line.length > 110 ? line.slice(0, 110) + '…' : line);
+      lastItem = null;
+      return;
     }
+
+    if(!lastItem || tokens.length === 0) return;
+
+    // Continuación: resto de un código largo partido en dos líneas dentro de su columna,
+    // o la continuación de una descripción larga.
+    if(hasColumn){
+      const fragmentos = [];
+      const resto = [];
+      lo.items.forEach(it => {
+        const t = it.text.trim();
+        const enColumnaCodigo = it.x >= colMin - 4 && it.x1 <= colMax + 4;
+        if(enColumnaCodigo && /^[A-Z0-9.\-_\/+#]{1,20}$/i.test(t)) fragmentos.push(t); else resto.push(t);
+      });
+      if(fragmentos.length){
+        lastItem.code = lastItem.code + fragmentos.join('');
+        if(resto.length) lastItem.name = (lastItem.name + ' ' + resto.join(' ')).replace(/\s+/g, ' ').trim();
+        return;
+      }
+    } else {
+      const looksLikeCodeFragment = tokens.length <= 2
+        && tokens.every(t => /^[A-Z0-9.\-_]{1,12}$/i.test(t))
+        && tokens.some(t => /\d/.test(t));
+      if(looksLikeCodeFragment && /[\-._]$/.test(lastItem.code)){
+        lastItem.code = lastItem.code + tokens.join('');
+        return;
+      }
+    }
+    lastItem.name = (lastItem.name + ' ' + line).trim();
   });
 
-  return { items, metadata };
+  // Control: la suma de las líneas debe coincidir con el total impreso en el PDF
+  let docTotal = null;
+  lines.forEach(l => {
+    if(/SUB\s*TOTAL|PRECIO|IGV/i.test(l)) return;
+    const m = l.match(/(?:^|\s)TOTAL\s*(?:S\/\.?|US\$|\$)?\s*([\d.,]+)\s*$/i);
+    if(m && DECIMAL_TOKEN_RE.test(m[1])) docTotal = tokenToNumber(m[1]);
+  });
+  let check = null;
+  if(docTotal !== null && items.length > 0){
+    const tol = Math.max(0.06, 0.01 * items.length);
+    const ok = [1, 1.18, 1 / 1.18].some(f => Math.abs(sumTotals * f - docTotal) <= tol);
+    check = { sum: sumTotals, total: docTotal, ok: ok };
+  }
+
+  return { items, metadata, unparsed, check };
 }
 
 const COTIZACION_PROMPT = 'Este archivo (puede ser un PDF o una foto) es una cotizacion de productos de repuestos y accesorios para motos. Lee la tabla y devuelve EXCLUSIVAMENTE un arreglo JSON valido, sin texto adicional, sin explicaciones, sin marcadores de markdown. Formato exacto: [{"code":"CODIGO","name":"NOMBRE BREVE (maximo 6 palabras)","qty":NUMERO,"price":NUMERO}]. Usa el codigo de la columna CODIGO o COD, el nombre de la columna ARTICULO o PRODUCTO, la cantidad de la columna CANT o CANTIDAD, y el precio de la columna PRECIO UNITARIO (en soles, solo el numero, sin S/). Si una fila no tiene cantidad visible, usa 1. Si no hay precio visible, usa 0. No omitas ninguna fila de producto.';
@@ -819,7 +910,16 @@ async function processCotizacionPhoto(file){
       saveProductCatalog();
       renderBuildList();
       renderCatalogStatus();
-      status.textContent = 'Se agregaron ' + items.length + ' línea(s) desde el PDF. Revisa los códigos antes de continuar, sobre todo los que se parecen entre sí.';
+      let msg = 'Se agregaron ' + items.length + ' línea(s) desde el PDF. Revisa los códigos antes de continuar, sobre todo los que se parecen entre sí.';
+      if(result.check){
+        if(result.check.ok) msg += '\n✓ La suma de los productos (' + result.check.sum.toFixed(2) + ') coincide con el total del PDF (' + result.check.total.toFixed(2) + ').';
+        else msg += '\n⚠ La suma de los productos leídos (' + result.check.sum.toFixed(2) + ') NO coincide con el total del PDF (' + result.check.total.toFixed(2) + '): puede faltar algún producto. Compara la lista con el PDF.';
+      }
+      if(result.unparsed && result.unparsed.length){
+        msg += '\n⚠ ' + result.unparsed.length + ' línea(s) parecen productos pero no se pudieron leer; agrégalas manualmente: ' + result.unparsed.join(' | ');
+      }
+      status.style.whiteSpace = 'pre-line';
+      status.textContent = msg;
     }catch(err){
       status.textContent = 'No se pudo leer este PDF (' + err.message + '). Agrega los productos manualmente abajo.';
     }
@@ -1760,12 +1860,13 @@ document.getElementById('despachos-search').addEventListener('input', renderDesp
 document.getElementById('recepciones-search').addEventListener('input', renderRecepcionesList);
 
 function downloadCsv(filename, rows){
+  // Punto y coma: así Excel en español separa las columnas en vez de dejar todo en la columna A
   function csvEscape(value){
     const str = String(value === undefined || value === null ? '' : value);
-    if(/[",\n]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
+    if(/[";\n\r]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
     return str;
   }
-  const csvContent = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+  const csvContent = rows.map(r => r.map(csvEscape).join(';')).join('\r\n');
   const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1777,30 +1878,60 @@ function downloadCsv(filename, rows){
   URL.revokeObjectURL(url);
 }
 
-function exportMovimientosCsv(list, contraparteLabel, filename){
-  const rows = [['Fecha verificacion', 'N de documento', contraparteLabel, 'Verificado por', 'Codigo', 'Producto', 'Cantidad pedida', 'Cantidad verificada', 'Precio unitario', 'Estado']];
-  list.forEach(d => {
-    const fecha = new Date(d.verifiedAt).toLocaleString('es-PE');
+function estadoLinea(i){
+  if(i.picked > i.qty) return 'EXCESO';
+  if(i.picked < i.qty) return 'FALTANTE';
+  return 'OK';
+}
+
+// Genera un libro de Excel con dos hojas: «Resumen» (una fila por documento) y «Detalle» (una fila por producto)
+function exportMovimientosExcel(list, contraparteLabel, baseName){
+  const hoy = new Date().toISOString().slice(0, 10);
+  const resumen = [['Fecha', 'Hora', 'N° documento', contraparteLabel, 'Verificado por', 'Líneas', 'Unidades pedidas', 'Unidades verificadas', 'Líneas con diferencia', 'Valor de la diferencia (S/)', 'Resultado']];
+  const detalle = [['Fecha', 'Hora', 'N° documento', contraparteLabel, 'Verificado por', 'Código', 'Producto', 'Cant. pedida', 'Cant. verificada', 'Diferencia', 'Estado', 'Precio unitario (S/)', 'Valor de la diferencia (S/)']];
+
+  list.slice().sort((a, b) => (b.verifiedAt || 0) - (a.verifiedAt || 0)).forEach(d => {
+    const f = new Date(d.verifiedAt);
+    const fecha = f.toLocaleDateString('es-PE');
+    const hora = f.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+    let pedidas = 0, verificadas = 0, conDif = 0, valorDif = 0;
     d.items.forEach(i => {
-      let estado = 'OK';
-      if(i.picked > i.qty) estado = 'EXCESO';
-      else if(i.picked < i.qty) estado = 'PENDIENTE';
-      rows.push([fecha, d.quoteNumber || '', d.client || '', d.verifiedBy || '', i.code || '', i.name || '', i.qty, i.picked, i.price || 0, estado]);
+      const dif = (i.picked || 0) - (i.qty || 0);
+      const valor = Math.round(dif * (i.price || 0) * 100) / 100;
+      pedidas += i.qty || 0; verificadas += i.picked || 0;
+      if(dif !== 0){ conDif++; valorDif += valor; }
+      detalle.push([fecha, hora, d.quoteNumber || '', d.client || '', d.verifiedBy || '', i.code || '', i.name || '', i.qty || 0, i.picked || 0, dif, estadoLinea(i), i.price || 0, valor]);
     });
+    resumen.push([fecha, hora, d.quoteNumber || '', d.client || '', d.verifiedBy || '', d.items.length, pedidas, verificadas, conDif, Math.round(valorDif * 100) / 100, conDif === 0 ? 'Completo' : 'Con diferencias']);
   });
-  downloadCsv(filename, rows);
+
+  if(typeof XLSX === 'undefined'){
+    // Sin el lector de Excel (sin internet): CSV separado por punto y coma, una sola hoja
+    downloadCsv(baseName + '_' + hoy + '.csv', detalle);
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  const wsRes = XLSX.utils.aoa_to_sheet(resumen);
+  wsRes['!cols'] = [{wch:12},{wch:8},{wch:16},{wch:30},{wch:18},{wch:8},{wch:16},{wch:18},{wch:18},{wch:22},{wch:16}];
+  wsRes['!autofilter'] = { ref: wsRes['!ref'] };
+  const wsDet = XLSX.utils.aoa_to_sheet(detalle);
+  wsDet['!cols'] = [{wch:12},{wch:8},{wch:16},{wch:30},{wch:18},{wch:18},{wch:50},{wch:12},{wch:14},{wch:11},{wch:11},{wch:16},{wch:22}];
+  wsDet['!autofilter'] = { ref: wsDet['!ref'] };
+  XLSX.utils.book_append_sheet(wb, wsRes, 'Resumen');
+  XLSX.utils.book_append_sheet(wb, wsDet, 'Detalle');
+  XLSX.writeFile(wb, baseName + '_' + hoy + '.xlsx');
 }
 
 document.getElementById('btn-export-despachos-csv').addEventListener('click', function(){
   const list = loadDespachos();
   if(list.length === 0) return;
-  exportMovimientosCsv(list, 'Cliente', 'despachos_' + new Date().toISOString().slice(0, 10) + '.csv');
+  exportMovimientosExcel(list, 'Cliente', 'despachos');
 });
 
 document.getElementById('btn-export-recepciones-csv').addEventListener('click', function(){
   const list = loadRecepciones();
   if(list.length === 0) return;
-  exportMovimientosCsv(list, 'Proveedor', 'recepciones_' + new Date().toISOString().slice(0, 10) + '.csv');
+  exportMovimientosExcel(list, 'Proveedor', 'recepciones');
 });
 
 // --- Página Métricas ---
@@ -2027,29 +2158,61 @@ async function importCatalogFromPdf(file){
 }
 
 // --- Importar catálogo desde Excel / CSV ---
+function normHeader(h){
+  return (h === undefined || h === null ? '' : String(h)).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Reconoce las columnas por su título (sin importar tildes/mayúsculas ni el orden).
+// Cada campo toma la PRIMERA columna que calza y una columna nunca se usa dos veces,
+// así "Código de barras" no pisa a "Código de referencia" ni "Nombre de archivo de foto" a "Nombre".
 function detectExcelColumns(headerRow){
-  // Intenta detectar las columnas por el título; si no encuentra, usa el orden
-  // por defecto: A=nombre, B=descripción, C=código, D=precio (precio se ignora).
-  const map = { name: 0, description: 1, code: 2, price: 3 };
-  if(!headerRow || headerRow.length === 0) return { map, hasHeader: false };
+  const map = {};
+  const norm = (headerRow || []).map(normHeader);
+  const usado = function(i){ return Object.keys(map).some(k => map[k] === i); };
+  const claim = function(field, test){
+    if(map[field] !== undefined) return;
+    for(let i = 0; i < norm.length; i++){
+      if(!norm[i] || usado(i)) continue;
+      if(test(norm[i])){ map[field] = i; return; }
+    }
+  };
+  claim('barcode', h => /barra|barcode|\bean\b|\bupc\b|gtin/.test(h));
+  claim('code', h => /^(codigo|cod\.?|sku)( de)?( referencia| referencial| interno| producto| articulo| item)?$|^referencia$|^cod\.? ref|^codigo ref/.test(h));
+  claim('name', h => /^(nombre|producto|articulo)( del producto| del articulo)?$/.test(h));
+  claim('description', h => /descrip/.test(h));
+  claim('model', h => /^modelo|^modelos|compatib|^moto/.test(h));
+  claim('color', h => /^color/.test(h));
+  claim('location', h => /ubicacion|estante|^ubic/.test(h));
+  // Segunda pasada, más flexible, para lo que no se encontró
+  claim('code', h => /codigo|\bcod\b|\bsku\b|referencia/.test(h) && !/barra|archivo|foto|imagen/.test(h));
+  claim('name', h => /nombre|producto|articulo/.test(h) && !/archivo|foto|imagen/.test(h));
+  return map;
+}
 
-  const normalized = headerRow.map(h => (h || '').toString().trim().toLowerCase());
-  let found = {};
-  normalized.forEach((h, idx) => {
-    if(/nombre/.test(h)) found.name = idx;
-    else if(/descrip|modelo/.test(h)) found.description = idx;
-    else if(/c[oó]digo|cod\b/.test(h)) found.code = idx;
-    else if(/precio/.test(h)) found.price = idx;
-  });
-
-  if(Object.keys(found).length >= 2){
-    return { map: Object.assign({}, map, found), hasHeader: true };
+// Busca la fila de títulos entre las primeras 15 filas (por si el archivo trae un encabezado arriba)
+function findExcelHeader(rows){
+  let best = { idx: -1, map: {}, score: 0 };
+  const limit = Math.min(rows.length, 15);
+  for(let i = 0; i < limit; i++){
+    const map = detectExcelColumns(rows[i]);
+    const keys = Object.keys(map);
+    if(keys.length < 2 || (map.code === undefined && map.name === undefined)) continue;
+    const score = keys.length + (map.code !== undefined ? 1 : 0) + (map.name !== undefined ? 1 : 0);
+    if(score > best.score) best = { idx: i, map: map, score: score };
   }
-  return { map, hasHeader: false };
+  return best;
+}
+
+function excelCell(row, idx){
+  if(idx === undefined) return '';
+  const v = row[idx];
+  return (v === undefined || v === null) ? '' : String(v).trim();
 }
 
 async function importCatalogFromExcel(file){
   const status = document.getElementById('catalog-excel-status');
+  status.style.whiteSpace = 'pre-line';
   status.textContent = 'Leyendo el archivo...';
   try{
     if(typeof XLSX === 'undefined'){
@@ -2057,46 +2220,93 @@ async function importCatalogFromExcel(file){
     }
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const firstSheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[firstSheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false });
 
-    if(rows.length === 0){
-      status.textContent = 'El archivo está vacío.';
-      return;
-    }
+    let added = 0, updated = 0, skipped = 0, filasLeidas = 0, barcodesNuevos = 0;
+    const conflictos = [];
+    const detalleHojas = [];
 
-    const { map, hasHeader } = detectExcelColumns(rows[0]);
-    const dataRows = hasHeader ? rows.slice(1) : rows;
+    workbook.SheetNames.forEach(function(sheetName, sheetIdx){
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', blankrows: false });
+      if(rows.length === 0) return;
 
-    let added = 0;
-    let skipped = 0;
-
-    dataRows.forEach(row => {
-      const name = (row[map.name] || '').toString().trim();
-      const description = (row[map.description] || '').toString().trim();
-      const code = (row[map.code] || '').toString().trim();
-
-      if(!name && !description && !code) return;
-      const key = code || name.slice(0, 60);
-      if(!key){ skipped++; return; }
-
-      if(!productCatalog[key]){
-        productCatalog[key] = { name: name, description: description, location: '', barcodes: [] };
-        added++;
+      let header = findExcelHeader(rows);
+      let map, dataRows, usoPorDefecto = false;
+      if(header.idx >= 0){
+        map = header.map;
+        dataRows = rows.slice(header.idx + 1);
+      } else if(sheetIdx === 0){
+        // Sin títulos reconocibles: orden por defecto A=nombre, B=descripción, C=código
+        map = { name: 0, description: 1, code: 2 };
+        dataRows = rows;
+        usoPorDefecto = true;
       } else {
-        let updated = false;
-        if(name && !productCatalog[key].name){ productCatalog[key].name = name; updated = true; }
-        if(description && !productCatalog[key].description){ productCatalog[key].description = description; updated = true; }
-        if(updated) added++;
+        return; // hojas extra sin formato reconocible se ignoran
       }
+
+      const etiquetas = header.idx >= 0 ? rows[header.idx] : [];
+      const nombresCol = { code: 'Código', barcode: 'Código de barras', name: 'Nombre', description: 'Descripción', model: 'Modelo', color: 'Color', location: 'Ubicación' };
+      const detectadas = Object.keys(nombresCol).filter(k => map[k] !== undefined)
+        .map(k => nombresCol[k] + ' ← «' + (usoPorDefecto ? ('columna ' + String.fromCharCode(65 + map[k])) : excelCell(etiquetas, map[k])) + '»');
+      detalleHojas.push('Hoja «' + sheetName + '»: ' + detectadas.join(' · ') + (usoPorDefecto ? ' (sin títulos: se usó el orden A=nombre, B=descripción, C=código)' : ''));
+
+      dataRows.forEach(function(row){
+        filasLeidas++;
+        const code = excelCell(row, map.code);
+        const barcodes = excelCell(row, map.barcode).split(/[;,|\s]+/).filter(Boolean);
+        const description = excelCell(row, map.description);
+        let name = excelCell(row, map.name);
+        if(!name && description) name = description;
+        const model = excelCell(row, map.model);
+        const color = excelCell(row, map.color);
+        const location = excelCell(row, map.location);
+
+        if(!name && !description && !code && barcodes.length === 0) return;
+        const key = code || barcodes[0] || name.slice(0, 60);
+        if(!key){ skipped++; return; }
+
+        let p = productCatalog[key];
+        const esNuevo = !p;
+        if(!p) p = productCatalog[key] = { name: '', description: '', location: '', barcodes: [] };
+        if(!p.barcodes) p.barcodes = [];
+        let cambio = esNuevo;
+        const llenar = function(campo, valor){
+          if(valor && !p[campo]){ p[campo] = valor; cambio = true; }
+        };
+        llenar('name', name);
+        llenar('description', description);
+        llenar('model', model);
+        llenar('color', color);
+        llenar('location', location);
+
+        barcodes.forEach(function(bc){
+          if(p.barcodes.includes(bc)) return;
+          const dueno = barcodeIndex[bc];
+          if((dueno && dueno !== key) || (productCatalog[bc] && bc !== key)){
+            conflictos.push(bc + ' (' + key + ' ↔ ' + (dueno || bc) + ')');
+            return;
+          }
+          p.barcodes.push(bc);
+          barcodeIndex[bc] = key;
+          barcodesNuevos++;
+          cambio = true;
+        });
+
+        if(cambio){ if(esNuevo) added++; else updated++; }
+      });
     });
 
     saveProductCatalog();
     rebuildBarcodeIndex();
     renderCatalogList();
     renderInicioStats();
-    status.textContent = 'Importado: ' + added + ' producto(s) nuevos o actualizados de ' + dataRows.length + ' fila(s) leídas' + (skipped ? ' (' + skipped + ' fila(s) sin datos usables omitidas)' : '') + '.';
+    renderCatalogStatus();
+
+    let msg = 'Importado: ' + added + ' producto(s) nuevos, ' + updated + ' completados con datos nuevos, de ' + filasLeidas + ' fila(s) leídas'
+      + (barcodesNuevos ? ' · ' + barcodesNuevos + ' código(s) de barras vinculados' : '')
+      + (skipped ? ' · ' + skipped + ' fila(s) sin datos usables omitidas' : '') + '.';
+    if(detalleHojas.length) msg += '\n' + detalleHojas.join('\n');
+    if(conflictos.length) msg += '\n⚠ ' + conflictos.length + ' código(s) de barras no se vincularon porque ya pertenecen a otro producto: ' + conflictos.slice(0, 8).join(', ') + (conflictos.length > 8 ? '…' : '');
+    status.textContent = msg;
   }catch(err){
     status.textContent = 'No se pudo leer el archivo (' + (err.message || err) + '). Revisa que sea un .xlsx, .xls o .csv válido.';
   }
@@ -2179,7 +2389,12 @@ function buildCatalogCard(code){
       + '<button type="button" data-action="cancel-confirm" style="flex:1;">Cancelar</button></div></div>';
   } else if(catalogUI.adding === code){
     actions = '<div style="margin-top:6px;">'
-      + '<label class="muted" style="display:block; margin-bottom:4px;">Escanea o escribe el código de barras y presiona Enter</label>'
+      + '<div style="display:flex; gap:6px; margin-bottom:6px;">'
+        + '<button type="button" class="btn-secondary" data-action="scan-barcode-camera" style="flex:1;">📷 Escanear con cámara</button>'
+        + '<button type="button" class="btn-secondary" data-action="use-barcode-reader" style="flex:1;">🔫 Usar lector</button>'
+      + '</div>'
+      + '<div id="catalog-card-cam" style="display:none; width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; margin-bottom:8px;"></div>'
+      + '<p id="catalog-card-cam-msg" class="muted" style="font-size:12px; margin-bottom:6px;">Cámara, lector USB/Bluetooth o escribe el código a mano. Con cámara o lector se guarda solo al leer.</p>'
       + '<input type="text" id="catalog-barcode-input" autocomplete="off" placeholder="Código de barras" value="' + escapeAttr(catalogUI.value || '') + '" style="margin-bottom:6px;">'
       + (catalogUI.msg ? '<p style="font-size:12px; color:var(--danger-text); margin-bottom:6px;">' + escapeAttr(catalogUI.msg) + '</p>' : '')
       + '<div style="display:flex; gap:6px;"><button type="button" class="btn-primary" data-action="save-barcode" style="flex:1;">Guardar código</button>'
@@ -2194,6 +2409,10 @@ function buildCatalogCard(code){
     + '<div class="title" style="font-family:monospace; font-size:13px;">' + escapeAttr(code) + badge + '</div>'
     + '<input type="text" data-field="name" value="' + escapeAttr(p.name || '') + '" placeholder="Nombre del producto" style="margin-bottom:6px;">'
     + '<input type="text" data-field="description" value="' + escapeAttr(p.description || '') + '" placeholder="Descripción / modelos" style="margin-bottom:6px;">'
+    + '<div style="display:flex; gap:6px; margin-bottom:6px;">'
+      + '<input type="text" data-field="model" value="' + escapeAttr(p.model || '') + '" placeholder="Modelo de moto" style="margin:0; flex:2;">'
+      + '<input type="text" data-field="color" value="' + escapeAttr(p.color || '') + '" placeholder="Color" style="margin:0; flex:1;">'
+    + '</div>'
     + '<input type="text" data-field="location" value="' + escapeAttr(p.location || '') + '" placeholder="Ubicación (ej: Estante B-2)" style="margin-bottom:6px;">'
     + '<label class="muted" style="display:block; margin-bottom:2px; font-size:12px;">Unidades por paquete (cada escaneo suma esta cantidad; déjalo en 1 si se vende suelto)</label>'
     + '<input type="number" min="1" data-field="packSize" value="' + pack + '" style="margin-bottom:6px;">'
@@ -2208,7 +2427,63 @@ function refreshCatalogCard(code){
   if(el) el.outerHTML = buildCatalogCard(code);
 }
 
+// --- Cámara / lector para agregar el código de barras desde la tarjeta del producto ---
+let cardQr = null;
+let cardCamLocked = false;
+
+async function stopCardCamera(){
+  const inst = cardQr;
+  cardQr = null;
+  if(inst){
+    try{ await inst.stop(); await inst.clear(); }catch(e){}
+  }
+  const box = document.getElementById('catalog-card-cam');
+  if(box) box.style.display = 'none';
+  const btn = document.querySelector('[data-action="scan-barcode-camera"]');
+  if(btn) btn.textContent = '📷 Escanear con cámara';
+}
+
+async function startCardCamera(code){
+  const msgEl = document.getElementById('catalog-card-cam-msg');
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    if(msgEl) msgEl.textContent = 'Este navegador no permite acceder a la cámara aquí. Abre la app desde tu link de GitHub Pages.';
+    return;
+  }
+  if(typeof Html5Qrcode === 'undefined'){
+    if(msgEl) msgEl.textContent = 'No se pudo cargar el lector de cámara. Recarga la página.';
+    return;
+  }
+  if(typeof catalogCameraActive !== 'undefined' && catalogCameraActive) await stopCatalogCamera(); // la cámara de arriba y esta no pueden usarse a la vez
+  const box = document.getElementById('catalog-card-cam');
+  if(!box) return;
+  box.style.display = 'block';
+  try{
+    cardQr = new Html5Qrcode('catalog-card-cam');
+    cardCamLocked = false;
+    await cardQr.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 260, height: 150 } },
+      function(decodedText){
+        if(cardCamLocked) return; // evita leer dos veces el mismo código
+        cardCamLocked = true;
+        const input = document.getElementById('catalog-barcode-input');
+        if(input) input.value = decodedText;
+        stopCardCamera().then(function(){ saveCatalogBarcode(code); });
+      },
+      function(){}
+    );
+    const btn = document.querySelector('[data-action="scan-barcode-camera"]');
+    if(btn) btn.textContent = '⏹ Detener cámara';
+    if(msgEl) msgEl.textContent = 'Apunta la cámara al código de barras del producto.';
+  }catch(err){
+    cardQr = null;
+    box.style.display = 'none';
+    if(msgEl) msgEl.textContent = 'No se pudo activar la cámara: ' + (err.message || err) + '.';
+  }
+}
+
 function setCatalogUI(next){
+  stopCardCamera();
   const involved = [catalogUI.adding, catalogUI.confirm && catalogUI.confirm.code];
   catalogUI = Object.assign({ adding: null, confirm: null, msg: '', value: '' }, next);
   involved.push(catalogUI.adding, catalogUI.confirm && catalogUI.confirm.code);
@@ -2225,7 +2500,7 @@ function renderCatalogList(){
   const query = document.getElementById('catalog-search').value.trim().toLowerCase();
   const codes = Object.keys(productCatalog).sort();
   let filtered = query
-    ? codes.filter(code => code.toLowerCase().includes(query) || (productCatalog[code].name || '').toLowerCase().includes(query) || (productCatalog[code].description || '').toLowerCase().includes(query))
+    ? codes.filter(code => code.toLowerCase().includes(query) || (productCatalog[code].name || '').toLowerCase().includes(query) || (productCatalog[code].description || '').toLowerCase().includes(query) || (productCatalog[code].model || '').toLowerCase().includes(query) || (productCatalog[code].color || '').toLowerCase().includes(query))
     : codes;
   if(catalogBarcodeFilter === 'sin') filtered = filtered.filter(code => !catalogHasBarcode(code));
   else if(catalogBarcodeFilter === 'con') filtered = filtered.filter(catalogHasBarcode);
@@ -2308,6 +2583,15 @@ document.getElementById('catalog-product-list').addEventListener('click', functi
   const conf = catalogUI.confirm;
 
   if(action === 'add-barcode') setCatalogUI({ adding: code });
+  else if(action === 'scan-barcode-camera'){
+    if(cardQr) stopCardCamera(); else startCardCamera(code);
+  }
+  else if(action === 'use-barcode-reader'){
+    const inp = document.getElementById('catalog-barcode-input');
+    const msgEl = document.getElementById('catalog-card-cam-msg');
+    if(inp){ inp.value = ''; inp.focus(); }
+    if(msgEl) msgEl.textContent = 'Listo: escanea ahora con el lector USB/Bluetooth (el cursor está en el cuadro). Se guarda solo al leer.';
+  }
   else if(action === 'cancel-add' || action === 'cancel-confirm') setCatalogUI({});
   else if(action === 'save-barcode') saveCatalogBarcode(code);
   else if(action === 'delete-product') setCatalogUI({ confirm: { code: code, kind: 'delete' } });
@@ -2413,6 +2697,7 @@ document.getElementById('catalog-camera-toggle-btn').addEventListener('click', a
   if(catalogCameraActive){
     await stopCatalogCamera();
   } else {
+    await stopCardCamera();
     await startCatalogCamera();
   }
 });
