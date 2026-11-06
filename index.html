@@ -46,7 +46,8 @@ button:active{ transform:scale(0.98); }
 .del-btn{ border:none; background:none; color:var(--danger-text); font-size:18px; padding:2px 4px; flex-shrink:0; }
 .pick-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--card); margin-bottom:6px; }
 .pick-row .code{ font-family:monospace; font-size:11px; color:var(--text-secondary); }
-.pick-row .name{ font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pick-row .name{ font-size:13px; line-height:1.3; white-space:normal; overflow-wrap:anywhere; margin-top:2px; }
+.brand-tag{ display:inline-block; font-family:inherit; font-size:10px; font-weight:700; letter-spacing:0.02em; padding:1px 6px; border-radius:6px; background:var(--accent-bg, #E6F1FB); color:var(--accent-text, #0C447C); margin-left:6px; vertical-align:1px; }
 .pick-row .left{ min-width:0; flex:1; }
 .pick-row .right{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .pick-row .count{ font-size:14px; font-weight:600; min-width:38px; text-align:right; }
@@ -101,7 +102,7 @@ button:active{ transform:scale(0.98); }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V1.9</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.0</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -158,6 +159,10 @@ button:active{ transform:scale(0.98); }
       <input id="quote-date" type="text" placeholder="ej: 25/06/2026" style="margin-bottom:10px;">
       <label class="muted" style="display:block; margin-bottom:4px; font-size:12px;" id="quote-client-label">Cliente</label>
       <input id="quote-client" type="text" placeholder="Nombre completo del cliente">
+      <div id="quote-seller-wrap" style="margin-top:10px;">
+        <label class="muted" style="display:block; margin-bottom:4px; font-size:12px;">Vendedor (quien hizo la cotización)</label>
+        <input id="quote-seller" type="text" placeholder="ej: JOSE ANDRES">
+      </div>
       <p class="muted" style="margin-top:6px; margin-bottom:0;" id="quote-card-hint">Si subes el PDF abajo, intentamos llenar estos campos solos. Igual puedes corregirlos a mano.</p>
     </div>
 
@@ -200,6 +205,8 @@ button:active{ transform:scale(0.98); }
 
   <section id="screen-pick" class="hidden">
 
+    <div id="pick-context" class="muted" style="margin:-4px 2px 10px; font-size:12px; line-height:1.5;"></div>
+
     <div class="card">
       <form id="scan-form">
         <input id="scan-input" type="text" placeholder="Escribe o escanea el código" autocomplete="off" style="margin-bottom:8px;">
@@ -239,7 +246,7 @@ button:active{ transform:scale(0.98); }
 
   <div id="page-despachos" class="hidden">
     <p class="muted" style="margin-bottom:10px;">Los despachos se guardan aquí de forma indefinida. Solo se eliminan si tú los borras manualmente.</p>
-    <input type="text" id="despachos-search" placeholder="Buscar por cliente o N° de cotización" style="margin-bottom:8px;">
+    <input type="text" id="despachos-search" placeholder="Buscar por cliente, vendedor o N° de cotización" style="margin-bottom:8px;">
     <button type="button" id="btn-export-despachos-csv" class="btn-secondary" style="margin-bottom:10px;">Exportar a Excel</button>
     <div id="despachos-list"></div>
   </div>
@@ -258,7 +265,7 @@ button:active{ transform:scale(0.98); }
   <div id="page-catalogo" class="hidden">
     <div class="card">
       <h2>Catálogo de productos</h2>
-      <input type="text" id="catalog-search" placeholder="Buscar por código o nombre" style="margin-bottom:0;">
+      <input type="text" id="catalog-search" placeholder="Buscar por código, nombre o marca" style="margin-bottom:0;">
     </div>
 
     <div class="card" id="catalog-barcode-alert" style="display:none;"></div>
@@ -301,7 +308,7 @@ button:active{ transform:scale(0.98); }
 
     <div class="card">
       <h2>Importar desde Excel</h2>
-      <p class="muted">Sube la <strong>Lista General de productos</strong> (.xlsx, .xls o .csv). Se leen las columnas <strong>DESCRIPCIÓN</strong>, <strong>CÓDIGO</strong> y <strong>MODELO</strong>; el resto (precios, stock, imágenes) se ignora. Si un producto ya existe, se actualizan su descripción y modelo, y se conservan sus códigos de barras, ubicación y unidades por paquete. Si el archivo trae una columna de código de barras (EAN), también se vinculan.</p>
+      <p class="muted">Sube la <strong>Lista General de productos</strong> (.xlsx, .xls o .csv). Se leen las columnas <strong>DESCRIPCIÓN</strong>, <strong>CÓDIGO</strong>, <strong>MODELO</strong> y <strong>MARCA</strong>; el resto (precios, stock, imágenes) se ignora. Si un producto ya existe, se actualizan su descripción, modelo y marca, y se conservan sus códigos de barras, ubicación y unidades por paquete. Si el archivo trae una columna de código de barras (EAN), también se vinculan.</p>
       <input type="file" id="catalog-excel-input" accept=".xlsx,.xls,.csv" class="hidden">
       <button type="button" id="btn-catalog-excel" class="btn-secondary">Subir archivo de Excel</button>
       <p id="catalog-excel-status" class="muted" style="margin-top:6px;"></p>
@@ -397,6 +404,7 @@ function setTipoMovimiento(tipo){
     document.getElementById('quote-number-label').textContent = 'N° de cotización';
     document.getElementById('quote-date-label').textContent = 'Fecha de la cotización';
     document.getElementById('quote-client-label').textContent = 'Cliente';
+    document.getElementById('quote-seller-wrap').classList.remove('hidden');
     document.getElementById('quote-card-hint').textContent = 'Si subes el PDF abajo, intentamos llenar estos campos solos. Igual puedes corregirlos a mano.';
     document.getElementById('upload-card-title').textContent = 'Cargar la cotización';
     document.getElementById('upload-card-hint').textContent = 'Sube el PDF de la cotización (se lee solo, en cualquier lugar) o una foto/captura desde tu galería (la lectura automática de fotos solo funciona dentro de Claude.ai). Revisa siempre el resultado antes de continuar.';
@@ -407,6 +415,7 @@ function setTipoMovimiento(tipo){
     document.getElementById('quote-number-label').textContent = 'N° de orden de compra / guía';
     document.getElementById('quote-date-label').textContent = 'Fecha del documento';
     document.getElementById('quote-client-label').textContent = 'Proveedor';
+    document.getElementById('quote-seller-wrap').classList.add('hidden');
     document.getElementById('quote-card-hint').textContent = 'Si subes el PDF abajo, intentamos llenar estos campos solos. Igual puedes corregirlos a mano.';
     document.getElementById('upload-card-title').textContent = 'Cargar la orden de compra / guía';
     document.getElementById('upload-card-hint').textContent = 'Sube el PDF de la guía u orden de compra del proveedor, o una foto/captura desde tu galería (la lectura automática de fotos solo funciona dentro de Claude.ai). Revisa siempre el resultado antes de continuar.';
@@ -509,6 +518,20 @@ function repairTruncatedCodes(){
 // "DIAZ GUEVARA JEAN CARLO Vendedor :" -> "DIAZ GUEVARA JEAN CARLO" (error de lectura de versiones anteriores)
 function cleanClientName(client){
   return String(client || '').replace(/\s+vendedor\s*:.*$/i, '').trim();
+}
+function sellerFromClient(client){
+  const m = String(client || '').match(/vendedor\s*:\s*(.*)$/i);
+  return m ? m[1].trim() : '';
+}
+
+// Datos del catálogo (marca, modelo) para un código del pedido, aunque difiera en mayúsculas/espacios
+function catalogInfo(code){
+  const k = findCatalogCode(code);
+  return k ? productCatalog[k] : null;
+}
+function brandTag(code){
+  const p = catalogInfo(code);
+  return p && p.brand ? '<span class="brand-tag">' + escapeAttr(p.brand) + '</span>' : '';
 }
 
 function rebuildBarcodeIndex(){
@@ -620,6 +643,7 @@ function loadRecepciones(){ return loadMovimientos().filter(m => m.type === 'rec
     const list = loadMovimientos();
     let changed = false;
     list.forEach(m => {
+      if(!m.seller){ const s = sellerFromClient(m.client); if(s){ m.seller = s; changed = true; } }
       const clean = cleanClientName(m.client);
       if(clean !== (m.client || '')){ m.client = clean; changed = true; }
     });
@@ -917,7 +941,7 @@ function parseRowToItem(row, ignoreSkipPattern){
 }
 
 function extractQuoteMetadata(lines){
-  const meta = { quoteNumber: '', quoteDate: '', client: '' };
+  const meta = { quoteNumber: '', quoteDate: '', client: '', seller: '' };
 
   for(let i = 0; i < lines.length; i++){
     const line = lines[i];
@@ -925,6 +949,12 @@ function extractQuoteMetadata(lines){
     if(!meta.quoteDate){
       const dateMatch = line.match(/emisi[oó]n\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
       if(dateMatch) meta.quoteDate = dateMatch[1];
+    }
+
+    if(!meta.seller){
+      // "... Vendedor : JOSE ANDRES" (puede venir vacío: "Vendedor :")
+      const sellerMatch = line.match(/vendedor\s*:\s*(.*)$/i);
+      if(sellerMatch) meta.seller = sellerMatch[1].replace(/\s*(cond\.?\s*venta|direcci[oó]n|ruc)\s*:.*$/i, '').trim();
     }
 
     if(!meta.client){
@@ -1132,6 +1162,8 @@ async function processCotizacionPhoto(file){
       if(metadata.quoteNumber && !quoteNumberInput.value.trim()) quoteNumberInput.value = metadata.quoteNumber;
       if(metadata.quoteDate && !quoteDateInput.value.trim()) quoteDateInput.value = metadata.quoteDate;
       if(metadata.client && !quoteClientInput.value.trim()) quoteClientInput.value = metadata.client;
+      const quoteSellerInput = document.getElementById('quote-seller');
+      if(metadata.seller && !quoteSellerInput.value.trim()) quoteSellerInput.value = metadata.seller;
 
       const w = result.warnings;
       if(items.length === 0){
@@ -1247,11 +1279,24 @@ document.getElementById('btn-start-verification').addEventListener('click', func
   }
   buildStatus.textContent = '';
   showScreen('pick');
+  renderPickContext();
   renderPickRows();
   updateStats();
   resetFeedback();
   document.getElementById('scan-input').focus();
 });
+
+function renderPickContext(){
+  const esRecepcion = tipoMovimiento === 'recepcion';
+  const parts = [];
+  const num = document.getElementById('quote-number').value.trim();
+  const client = document.getElementById('quote-client').value.trim();
+  const seller = document.getElementById('quote-seller').value.trim();
+  if(num) parts.push('<b>' + (esRecepcion ? 'Doc. ' : 'Cot. ') + escapeAttr(num) + '</b>');
+  if(client) parts.push((esRecepcion ? 'Proveedor: ' : 'Cliente: ') + escapeAttr(client));
+  if(!esRecepcion) parts.push('Vendedor: ' + (seller ? '<b>' + escapeAttr(seller) + '</b>' : '(sin dato)'));
+  document.getElementById('pick-context').innerHTML = parts.join(' · ');
+}
 
 function rowStyle(item){
   if(item.picked > item.qty) return { border:'var(--danger-border)', bg:'var(--danger-bg)', count:'var(--danger-text)' };
@@ -1287,7 +1332,7 @@ function renderPickRows(){
     }
     return '<div class="pick-wrap">'
       + '<div class="pick-row" style="border-color:'+s.border+'; background:'+s.bg+';">'
-      + '<div class="left"><div class="code">'+c+packTag+'</div><div class="name" title="'+escapeAttr(item.name)+'">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
+      + '<div class="left"><div class="code">'+c+brandTag(item.code)+packTag+'</div><div class="name">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
       + '<div class="right">'
         + '<span class="count" style="color:'+s.count+';">'+item.picked+'/'+item.qty+'</span>'
         + '<button type="button" class="minus-btn" data-act="minus" data-code="'+c+'" aria-label="Quitar ' + pack + '" title="Quitar ' + pack + '">−</button>'
@@ -1478,13 +1523,15 @@ function handleScan(raw){
   pendingUnknownCode = null;
   const step = getPackSize(item.code);
   const stepTxt = step > 1 ? ' (+' + step + ' por paquete)' : '';
+  const scanBrand = (catalogInfo(item.code) || {}).brand;
+  const itemLabel = (scanBrand ? '[' + scanBrand + '] ' : '') + item.name;
   item.picked += step;
   if(item.picked > item.qty){
-    setFeedback('Exceso: ' + item.name + stepTxt + ' — pedidas ' + item.qty + ', van ' + item.picked + '.' + (step > 1 ? ' Si abriste un paquete, ajusta con ✎.' : ''), 'var(--danger-text)');
+    setFeedback('Exceso: ' + itemLabel + stepTxt + ' — pedidas ' + item.qty + ', van ' + item.picked + '.' + (step > 1 ? ' Si abriste un paquete, ajusta con ✎.' : ''), 'var(--danger-text)');
   } else if(item.picked === item.qty){
-    setFeedback('Completo: ' + item.name + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--success-text)');
+    setFeedback('Completo: ' + itemLabel + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--success-text)');
   } else {
-    setFeedback('Agregado: ' + item.name + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--text-secondary)');
+    setFeedback('Agregado: ' + itemLabel + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--text-secondary)');
   }
   renderPickRows();
   updateStats();
@@ -1506,7 +1553,10 @@ document.getElementById('feedback-action').addEventListener('click', function(e)
       item.picked += getPackSize(targetCode);
       renderPickRows();
       updateStats();
-      setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + item.picked + '/' + item.qty + '). La próxima vez que escanees este código, ya lo va a reconocer solo.', 'var(--success-text)');
+      const nBarcodes = ((productCatalog[targetCode] || {}).barcodes || []).length;
+      setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + item.picked + '/' + item.qty + '). La próxima vez que escanees este código, ya lo va a reconocer solo.'
+        + (nBarcodes > 1 ? ' ⚠ Ojo: este producto ahora tiene ' + nBarcodes + ' códigos de barras. Si no es correcto, quítalo en Catálogo.' : ''),
+        nBarcodes > 1 ? 'var(--warning-text)' : 'var(--success-text)');
     }
     return;
   }
@@ -1616,6 +1666,7 @@ document.getElementById('btn-new-order').addEventListener('click', async functio
   document.getElementById('quote-number').value = '';
   document.getElementById('quote-date').value = '';
   document.getElementById('quote-client').value = '';
+  document.getElementById('quote-seller').value = '';
   document.getElementById('photo-status').textContent = '';
   setTipoMovimiento('despacho');
   showScreen('build');
@@ -1652,7 +1703,7 @@ function buildSummaryText(){
   return lines.join('\n');
 }
 
-function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, verifiedAtStr, verifiedBy){
+function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, verifiedAtStr, verifiedBy, seller){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const marginX = 15;
@@ -1688,6 +1739,10 @@ function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, veri
     y += 5;
     doc.text(labelContraparte + ': ' + (client || '(sin dato)'), marginX, y);
     y += 5;
+    if(!esRecepcion){
+      doc.text('Vendedor: ' + (seller || '(sin dato)'), marginX, y);
+      y += 5;
+    }
     doc.text('Verificado el: ' + verifiedAtStr + '  -  Verificado por: ' + (verifiedBy || '(sin nombre)'), marginX, y);
     y += 7;
 
@@ -1790,6 +1845,7 @@ async function generateMovimientoPdf(){
   const quoteNumber = document.getElementById('quote-number').value.trim();
   const quoteDate = document.getElementById('quote-date').value.trim();
   const client = document.getElementById('quote-client').value.trim();
+  const seller = tipoMovimiento === 'recepcion' ? '' : document.getElementById('quote-seller').value.trim();
   const verifiedBy = document.getElementById('worker-name').value.trim();
   const verifiedAt = Date.now();
   const verifiedAtDate = new Date(verifiedAt);
@@ -1797,7 +1853,7 @@ async function generateMovimientoPdf(){
   const itemsSnapshot = pickItems.map(i => ({ code: i.code, name: i.name, qty: i.qty, picked: i.picked, price: i.price || 0 }));
   const type = tipoMovimiento;
 
-  const doc = buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, itemsSnapshot, verifiedAtStr, verifiedBy);
+  const doc = buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, itemsSnapshot, verifiedAtStr, verifiedBy, seller);
   const filenameRef = quoteNumber ? quoteNumber.replace(/[^a-z0-9]+/gi, '_').slice(0, 40) : 'pedido';
   const filenamePrefix = type === 'recepcion' ? 'recepcion_' : 'despacho_';
   await shareOrDownloadPdf(doc, filenamePrefix + filenameRef + '.pdf');
@@ -1808,6 +1864,7 @@ async function generateMovimientoPdf(){
     quoteNumber: quoteNumber,
     quoteDate: quoteDate,
     client: client,
+    seller: seller,
     verifiedBy: verifiedBy,
     verifiedAt: verifiedAt,
     items: itemsSnapshot
@@ -1818,6 +1875,7 @@ async function generateMovimientoPdf(){
   document.getElementById('quote-number').value = '';
   document.getElementById('quote-date').value = '';
   document.getElementById('quote-client').value = '';
+  document.getElementById('quote-seller').value = '';
   document.getElementById('photo-status').textContent = '';
   status.textContent = '';
   renderBuildList();
@@ -1834,7 +1892,7 @@ async function redownloadMovimiento(id){
   if(!record) return;
   const verifiedAtDate = new Date(record.verifiedAt);
   const verifiedAtStr = verifiedAtDate.toLocaleDateString('es-PE') + ' ' + verifiedAtDate.toLocaleTimeString('es-PE');
-  const doc = buildMovimientoPdfDoc(record.type || 'despacho', record.quoteNumber, record.quoteDate, record.client, record.items, verifiedAtStr, record.verifiedBy);
+  const doc = buildMovimientoPdfDoc(record.type || 'despacho', record.quoteNumber, record.quoteDate, record.client, record.items, verifiedAtStr, record.verifiedBy, record.seller);
   const filenameRef = record.quoteNumber ? record.quoteNumber.replace(/[^a-z0-9]+/gi, '_').slice(0, 40) : 'pedido';
   const filenamePrefix = record.type === 'recepcion' ? 'recepcion_' : 'despacho_';
   await shareOrDownloadPdf(doc, filenamePrefix + filenameRef + '.pdf');
@@ -1889,7 +1947,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V1.9',
+    version: 'V2.0',
     exportedAt: Date.now(),
     productCatalog: productCatalog,
     movimientos: loadMovimientos()
@@ -1916,6 +1974,7 @@ function importBackupFile(file){
       let addedMovimientos = 0;
 
       let barcodesMerged = 0;
+      let sellersRecovered = 0;
       const backupBarcodeConflicts = [];
 
       // Respaldo nuevo (V1.2+): productCatalog + movimientos
@@ -1930,13 +1989,14 @@ function importBackupFile(file){
           const code = (!(originalCode in productCatalog) && findRepairTarget(originalCode, officialNorm)) || originalCode;
           const isNew = !(code in productCatalog);
           if(isNew){
-            productCatalog[code] = { name: incoming.name || '', description: incoming.description || '', location: incoming.location || '', barcodes: [] };
+            productCatalog[code] = { name: incoming.name || '', description: incoming.description || '', brand: incoming.brand || '', location: incoming.location || '', barcodes: [] };
             if(incoming.packSize) productCatalog[code].packSize = incoming.packSize;
             addedCatalog++;
           } else {
             const p = productCatalog[code];
             if(!p.name && incoming.name) p.name = incoming.name;
             if(!p.description && incoming.description) p.description = incoming.description;
+            if(!p.brand && incoming.brand) p.brand = incoming.brand;
             if(!p.location && incoming.location) p.location = incoming.location;
             if((!p.packSize || p.packSize === 1) && incoming.packSize > 1) p.packSize = incoming.packSize;
           }
@@ -1960,7 +2020,19 @@ function importBackupFile(file){
         const existing = loadMovimientos();
         const existingIds = new Set(existing.map(d => d.id));
         const nuevos = data.movimientos.filter(d => d && d.id && !existingIds.has(d.id));
-        nuevos.forEach(d => { d.client = cleanClientName(d.client); });
+        nuevos.forEach(d => {
+          if(!d.seller) d.seller = sellerFromClient(d.client);
+          d.client = cleanClientName(d.client);
+        });
+        // Despachos que ya tenías: recuperar el vendedor si el respaldo lo trae
+        const incomingById = {};
+        data.movimientos.forEach(d => { if(d && d.id) incomingById[d.id] = d; });
+        existing.forEach(d => {
+          const inc = incomingById[d.id];
+          if(!inc || d.seller) return;
+          const seller = inc.seller || sellerFromClient(inc.client);
+          if(seller){ d.seller = seller; sellersRecovered++; }
+        });
         addedMovimientos = nuevos.length;
         saveMovimientosList(existing.concat(nuevos));
       }
@@ -1991,6 +2063,7 @@ function importBackupFile(file){
       renderInicioStats();
       let msg = 'Importado: ' + addedCatalog + ' producto(s) nuevos, ' + addedMovimientos + ' movimiento(s) nuevos';
       if(barcodesMerged) msg += ', ' + barcodesMerged + ' código(s) de barras agregados a productos que ya tenías';
+      if(sellersRecovered) msg += ', vendedor recuperado en ' + sellersRecovered + ' despacho(s)';
       msg += '.';
       if(repair.merged.length) msg += ' Se corrigieron ' + repair.merged.length + ' código(s) mal leídos por versiones anteriores (' + repair.merged.join(', ') + ').';
       if(backupBarcodeConflicts.length) msg += ' ⚠ ' + backupBarcodeConflicts.length + ' código(s) de barras ya estaban en otro producto y no se cambiaron: ' + backupBarcodeConflicts.slice(0, 5).join(', ') + (backupBarcodeConflicts.length > 5 ? '…' : '') + '.';
@@ -2020,6 +2093,7 @@ document.getElementById('btn-inicio-nuevo-pedido').addEventListener('click', fun
   document.getElementById('quote-number').value = '';
   document.getElementById('quote-date').value = '';
   document.getElementById('quote-client').value = '';
+  document.getElementById('quote-seller').value = '';
   document.getElementById('photo-status').textContent = '';
   setTipoMovimiento('despacho');
   renderBuildList();
@@ -2057,6 +2131,7 @@ function renderMovimientoCard(d, labelContraparte){
   return '<div class="despacho-card" data-id="' + escapeAttr(d.id) + '">'
     + '<div class="title">' + escapeAttr(d.quoteNumber || '(sin número)') + ' ' + badge + '</div>'
     + '<div class="muted">' + labelContraparte + ': ' + escapeAttr(d.client || '(sin dato)') + '</div>'
+    + (d.type !== 'recepcion' && d.seller ? '<div class="muted">Vendedor: ' + escapeAttr(d.seller) + '</div>' : '')
     + '<div class="muted">Verificado: ' + fechaStr + (d.verifiedBy ? ' - por ' + escapeAttr(d.verifiedBy) : '') + '</div>'
     + '<div class="muted">' + complete + '/' + total + ' líneas completas</div>'
     + valueLine
@@ -2072,7 +2147,7 @@ function renderMovimientoCard(d, labelContraparte){
 function filterMovimientos(list, query){
   if(!query) return list;
   const q = query.toLowerCase();
-  return list.filter(d => (d.client || '').toLowerCase().includes(q) || (d.quoteNumber || '').toLowerCase().includes(q));
+  return list.filter(d => (d.client || '').toLowerCase().includes(q) || (d.quoteNumber || '').toLowerCase().includes(q) || (d.seller || '').toLowerCase().includes(q));
 }
 
 function renderDespachosList(){
@@ -2190,6 +2265,7 @@ function buildMovimientosExportData(list, isRecepcion){
     { header: docLabel, width: 15 },
     { header: docDateLabel, width: 13, fmt: DATE },
     { header: contraparte, width: 36 },
+    { header: 'Vendedor', width: 18, onlyDespacho: true },
     { header: 'Verificado por', width: 16 },
     { header: 'Líneas', width: 8, fmt: INT },
     { header: 'Líneas OK', width: 9, fmt: INT },
@@ -2207,9 +2283,11 @@ function buildMovimientosExportData(list, isRecepcion){
     { header: 'Hora', width: 7, fmt: TIME },
     { header: docLabel, width: 15 },
     { header: contraparte, width: 32 },
+    { header: 'Vendedor', width: 18, onlyDespacho: true },
     { header: 'Verificado por', width: 16 },
     { header: 'Ítem', width: 6, fmt: INT, center: true },
     { header: 'Código', width: 24 },
+    { header: 'Marca', width: 16 },
     { header: 'Descripción', width: 46 },
     { header: 'Modelo', width: 30 },
     { header: 'Cant. pedida', width: 10, fmt: INT },
@@ -2236,24 +2314,33 @@ function buildMovimientosExportData(list, isRecepcion){
       vPed += (i.qty || 0) * price; vVer += (i.picked || 0) * price;
       const catCode = findCatalogCode(i.code);
       const modelo = catCode ? (productCatalog[catCode].description || '') : '';
+      const marca = catCode ? (productCatalog[catCode].brand || '') : '';
       detailRows.push([
-        fecha, hora, d.quoteNumber || '', d.client || '', d.verifiedBy || '',
-        idx + 1, i.code || '', i.name || '', modelo,
+        fecha, hora, d.quoteNumber || '', d.client || '', d.seller || '', d.verifiedBy || '',
+        idx + 1, i.code || '', marca, i.name || '', modelo,
         i.qty || 0, i.picked || 0, (i.picked || 0) - (i.qty || 0),
         round2(price), round2((i.qty || 0) * price), round2((i.picked || 0) * price), estado
       ]);
     });
     summaryRows.push([
-      fecha, hora, d.quoteNumber || '', parseDocDate(d.quoteDate), d.client || '', d.verifiedBy || '',
+      fecha, hora, d.quoteNumber || '', parseDocDate(d.quoteDate), d.client || '', d.seller || '', d.verifiedBy || '',
       items.length, ok, pend, exc, uPed, uVer, round2(vPed), round2(vVer), round2(vVer - vPed),
       (pend === 0 && exc === 0) ? 'COMPLETO' : 'CON DIFERENCIAS'
     ]);
   });
 
+  // En recepciones no hay vendedor: se quita esa columna
+  const dropCols = function(cols, rows){
+    if(!isRecepcion) return { cols: cols, rows: rows };
+    const keep = cols.map((c, i) => c.onlyDespacho ? -1 : i).filter(i => i >= 0);
+    return { cols: keep.map(i => cols[i]), rows: rows.map(r => keep.map(i => r[i])) };
+  };
+  const sum = dropCols(summaryCols, summaryRows);
+  const det = dropCols(detailCols, detailRows);
   return {
     sheets: [
-      { name: 'Resumen', cols: summaryCols, rows: summaryRows },
-      { name: 'Detalle', cols: detailCols, rows: detailRows }
+      { name: 'Resumen', cols: sum.cols, rows: sum.rows },
+      { name: 'Detalle', cols: det.cols, rows: det.rows }
     ]
   };
 }
@@ -2610,7 +2697,7 @@ function normHeader(h){
 }
 
 function detectCatalogColumns(headerRow){
-  const cols = { code: -1, name: -1, model: -1, barcode: -1 };
+  const cols = { code: -1, name: -1, model: -1, barcode: -1, brand: -1 };
   const headers = headerRow.map(normHeader);
   headers.forEach((n, idx) => {
     if(!n) return;
@@ -2618,6 +2705,7 @@ function detectCatalogColumns(headerRow){
     if(cols.code < 0 && /^(CODIGO|COD\.?|CODIGO INTERNO|CODIGO DEL PRODUCTO|CODIGO PRODUCTO|SKU)$/.test(n)){ cols.code = idx; return; }
     if(cols.name < 0 && /^(DESCRIPCION|DESCRIPCION DEL PRODUCTO|NOMBRE|NOMBRE DEL PRODUCTO|PRODUCTO|ARTICULO)$/.test(n)){ cols.name = idx; return; }
     if(cols.model < 0 && /^(MODELO|MODELOS|MODELO\(S\)|COMPATIBILIDAD|APLICACION)$/.test(n)){ cols.model = idx; return; }
+    if(cols.brand < 0 && /^(MARCA|BRAND|FABRICANTE)$/.test(n)){ cols.brand = idx; return; }
   });
   // Segunda pasada, más flexible, solo para el código
   if(cols.code < 0){
@@ -2708,9 +2796,10 @@ async function importCatalogFromExcel(file){
       const code = excelCellText(sheet, r, cols.code);
       const name = cols.name >= 0 ? excelCellText(sheet, r, cols.name) : '';
       const model = cols.model >= 0 ? excelCellText(sheet, r, cols.model) : '';
+      const brand = cols.brand >= 0 ? excelCellText(sheet, r, cols.brand) : '';
       const barcodeText = cols.barcode >= 0 ? excelCellText(sheet, r, cols.barcode) : '';
 
-      if(!code && !name && !model){
+      if(!code && !name && !model && !brand){
         if(++emptyStreak > 500) break; // fin real de la tabla
         continue;
       }
@@ -2722,7 +2811,7 @@ async function importCatalogFromExcel(file){
       // solo completa los que ya existen.
       if(!p && cols.name < 0){ skippedUnknown++; continue; }
       if(!p){
-        productCatalog[code] = { name: name, description: model, location: '', barcodes: [] };
+        productCatalog[code] = { name: name, description: model, brand: brand, location: '', barcodes: [] };
         added++;
       } else {
         // El Excel es la fuente oficial: actualiza descripción y modelo,
@@ -2730,6 +2819,7 @@ async function importCatalogFromExcel(file){
         let changed = false;
         if(name && p.name !== name){ p.name = name; changed = true; }
         if(model && p.description !== model){ p.description = model; changed = true; }
+        if(brand && p.brand !== brand){ p.brand = brand; changed = true; }
         if(!p.barcodes) p.barcodes = [];
         if(changed) updated++; else unchanged++;
       }
@@ -2758,6 +2848,7 @@ async function importCatalogFromExcel(file){
     const colNames = ['CÓDIGO'];
     if(cols.name >= 0) colNames.push('DESCRIPCIÓN');
     if(cols.model >= 0) colNames.push('MODELO');
+    if(cols.brand >= 0) colNames.push('MARCA');
     if(cols.barcode >= 0) colNames.push('CÓDIGO DE BARRAS');
     let msg = '✓ Hoja «' + table.sheetName + '» (columnas: ' + colNames.join(', ') + '). '
       + added + ' producto(s) nuevos, ' + updated + ' actualizados, ' + unchanged + ' sin cambios.';
@@ -2799,6 +2890,27 @@ const CATALOG_PAGE_SIZE = 50;      // con miles de productos, dibujar todos a la
 let catalogVisibleLimit = CATALOG_PAGE_SIZE;
 let catalogUI = { adding: null, confirm: null, msg: '', value: '' }; // tarjeta con formulario/confirmación abierta
 
+// Productos con 2 o más códigos de barras, y códigos de barras que aparecen en más de un producto.
+// Puede ser correcto (la caja trae dos códigos) o un error (se escaneó la caja de otro producto).
+function findDoubleBarcodes(){
+  const multi = new Set();
+  const owners = {};
+  Object.keys(productCatalog).forEach(code => {
+    const bcs = productCatalog[code].barcodes || [];
+    if(bcs.length > 1) multi.add(code);
+    bcs.forEach(bc => { (owners[bc] = owners[bc] || []).push(code); });
+  });
+  const shared = {}; // código -> [otros productos con el mismo código de barras]
+  Object.keys(owners).forEach(bc => {
+    if(owners[bc].length < 2) return;
+    owners[bc].forEach(code => {
+      shared[code] = (shared[code] || []).concat(owners[bc].filter(c => c !== code).map(c => bc + ' también en ' + c));
+    });
+  });
+  const all = new Set([...multi, ...Object.keys(shared)]);
+  return { multi, shared, all };
+}
+
 function catalogHasBarcode(code){
   const p = productCatalog[code];
   return !!(p && p.barcodes && p.barcodes.length);
@@ -2814,6 +2926,14 @@ function renderCatalogBarcodeAlert(){
   }
   const con = codes.filter(catalogHasBarcode).length;
   const sin = codes.length - con;
+  const dbl = findDoubleBarcodes();
+  const nShared = Object.keys(dbl.shared).length;
+  const doubleBox = dbl.all.size
+    ? '<div style="background:var(--danger-bg); color:var(--danger-text); border:1px solid var(--danger-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">⚠ <b>' + dbl.all.size + ' producto(s) con doble código de barras.</b> '
+      + (dbl.multi.size ? dbl.multi.size + ' tienen 2 o más códigos. ' : '')
+      + (nShared ? nShared + ' comparten un código con otro producto. ' : '')
+      + 'Toca «Doble código» y revisa que cada código sea de ese producto; quita con × el que esté mal. (A veces es correcto: algunas cajas traen dos códigos.)</div>'
+    : '';
   const alertBox = sin > 0
     ? '<div style="background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">⚠ <b>' + sin + ' producto(s) sin código de barras.</b> Toca «Sin código de barras» para verlos y asignarles el código uno por uno.</div>'
     : '<div style="background:var(--success-bg); color:var(--success-text); border:1px solid var(--success-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">✓ Todos los productos del catálogo tienen código de barras.</div>';
@@ -2821,8 +2941,9 @@ function renderCatalogBarcodeAlert(){
     return '<button type="button" data-filter="' + key + '" class="toggle-btn' + (catalogBarcodeFilter === key ? ' active' : '') + '" style="flex:1; text-align:center; font-size:12px; padding:8px 4px; border:1px solid var(--border);">' + label + ' (' + n + ')</button>';
   };
   el.style.display = 'block';
-  el.innerHTML = '<h2 style="margin-bottom:8px;">Códigos de barras</h2>' + alertBox
-    + '<div style="display:flex; gap:6px;">' + chip('all', 'Todos', codes.length) + chip('sin', 'Sin código de barras', sin) + chip('con', 'Con código de barras', con) + '</div>';
+  el.innerHTML = '<h2 style="margin-bottom:8px;">Códigos de barras</h2>' + doubleBox + alertBox
+    + '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + chip('all', 'Todos', codes.length) + chip('sin', 'Sin código', sin) + chip('con', 'Con código', con)
+    + (dbl.all.size || catalogBarcodeFilter === 'doble' ? chip('doble', '⚠ Doble código', dbl.all.size) : '') + '</div>';
 }
 
 function buildCatalogCard(code){
@@ -2831,6 +2952,19 @@ function buildCatalogCard(code){
   const barcodes = p.barcodes || [];
   const hasBarcode = barcodes.length > 0;
   const badge = hasBarcode ? '' : '<span class="badge" style="background:var(--danger-bg); color:var(--danger-text); margin-left:6px; font-family:inherit;">Sin código de barras</span>';
+  const sharedWith = [];
+  if(hasBarcode){
+    barcodes.forEach(bc => {
+      Object.keys(productCatalog).forEach(other => {
+        if(other !== code && (productCatalog[other].barcodes || []).includes(bc)) sharedWith.push(bc + ' también está en ' + other);
+      });
+    });
+  }
+  const doubleWarn = (barcodes.length > 1 || sharedWith.length)
+    ? '<div style="font-size:12px; color:var(--danger-text); background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:8px; padding:6px 8px; margin-bottom:6px;">⚠ '
+      + (barcodes.length > 1 ? 'Tiene ' + barcodes.length + ' códigos de barras. Revisa que todos sean de este producto. ' : '')
+      + (sharedWith.length ? escapeAttr(sharedWith.join('; ')) + '.' : '') + '</div>'
+    : '';
   const pack = parseInt(p.packSize) > 0 ? parseInt(p.packSize) : 1;
   const barcodesInfo = hasBarcode
     ? '<div class="muted" style="font-size:11px; margin-bottom:6px;">Códigos de barra: ' + barcodes.map(function(bc){
@@ -2869,11 +3003,14 @@ function buildCatalogCard(code){
     + '<div class="title" style="font-family:monospace; font-size:13px;">' + escapeAttr(code) + badge + '</div>'
     + '<label class="muted" style="display:block; margin-bottom:2px; font-size:11px;">Descripción</label>'
     + '<input type="text" data-field="name" value="' + escapeAttr(p.name || '') + '" placeholder="Descripción del producto" style="margin-bottom:6px;">'
+    + '<label class="muted" style="display:block; margin-bottom:2px; font-size:11px;">Marca</label>'
+    + '<input type="text" data-field="brand" value="' + escapeAttr(p.brand || '') + '" placeholder="Marca" style="margin-bottom:6px;">'
     + '<label class="muted" style="display:block; margin-bottom:2px; font-size:11px;">Modelo(s)</label>'
     + '<input type="text" data-field="description" value="' + escapeAttr(p.description || '') + '" placeholder="Modelo(s) compatibles" style="margin-bottom:6px;">'
     + '<input type="text" data-field="location" value="' + escapeAttr(p.location || '') + '" placeholder="Ubicación (ej: Estante B-2)" style="margin-bottom:6px;">'
     + '<label class="muted" style="display:block; margin-bottom:2px; font-size:12px;">Unidades por paquete (cada escaneo suma esta cantidad; déjalo en 1 si se vende suelto)</label>'
     + '<input type="number" min="1" data-field="packSize" value="' + pack + '" style="margin-bottom:6px;">'
+    + doubleWarn
     + barcodesInfo
     + actions
   + '</div>';
@@ -2902,16 +3039,18 @@ function renderCatalogList(){
   const query = document.getElementById('catalog-search').value.trim().toLowerCase();
   const codes = Object.keys(productCatalog).sort();
   let filtered = query
-    ? codes.filter(code => code.toLowerCase().includes(query) || (productCatalog[code].name || '').toLowerCase().includes(query) || (productCatalog[code].description || '').toLowerCase().includes(query))
+    ? codes.filter(code => code.toLowerCase().includes(query) || (productCatalog[code].name || '').toLowerCase().includes(query) || (productCatalog[code].description || '').toLowerCase().includes(query) || (productCatalog[code].brand || '').toLowerCase().includes(query))
     : codes;
   if(catalogBarcodeFilter === 'sin') filtered = filtered.filter(code => !catalogHasBarcode(code));
   else if(catalogBarcodeFilter === 'con') filtered = filtered.filter(catalogHasBarcode);
+  else if(catalogBarcodeFilter === 'doble'){ const dbl = findDoubleBarcodes(); filtered = filtered.filter(code => dbl.all.has(code)); }
 
   if(filtered.length === 0){
     let msg = 'Todavía no hay productos en el catálogo. Se van agregando solos al subir cotizaciones, o puedes agregarlos a mano arriba.';
     if(codes.length > 0){
       msg = catalogBarcodeFilter === 'sin' && !query ? 'No hay productos sin código de barras. ✓'
           : catalogBarcodeFilter === 'con' && !query ? 'Todavía ningún producto tiene código de barras.'
+          : catalogBarcodeFilter === 'doble' && !query ? 'Ningún producto tiene doble código de barras. ✓'
           : 'No se encontraron productos para esa búsqueda.';
     }
     container.innerHTML = '<p class="muted">' + msg + '</p>';
