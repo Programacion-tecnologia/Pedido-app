@@ -81,6 +81,14 @@ button:active{ transform:scale(0.98); }
 .badge{ display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; }
 .badge-success{ background:var(--success-bg); color:var(--success-text); }
 .badge-warning{ background:var(--warning-bg); color:var(--warning-text); }
+.thumb{ flex:none; display:inline-block; border-radius:8px; object-fit:contain; background:#fff; border:1px solid var(--border); vertical-align:middle; }
+img.thumb[data-view-img]{ cursor:zoom-in; }
+.thumb-empty{ background:var(--bg, #f4f4f1); border-style:dashed; }
+#img-modal{ position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:70; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; color:#fff; text-align:center; }
+#img-modal img{ width:min(92vw, 420px); height:auto; max-height:70vh; object-fit:contain; background:#fff; border-radius:12px; }
+#feedback-area{ display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; }
+#feedback-area #feedback-text{ flex:1; min-width:0; }
+#feedback-area #feedback-action{ flex-basis:100%; }
 #scan-modal{ position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:60; display:flex; align-items:center; justify-content:center; padding:16px; }
 #scan-modal .scan-box{ background:var(--card); border-radius:12px; padding:14px; width:100%; max-width:440px; }
 #scan-modal-preview{ width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; margin-bottom:10px; }
@@ -102,7 +110,7 @@ button:active{ transform:scale(0.98); }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.0</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.1</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -215,6 +223,7 @@ button:active{ transform:scale(0.98); }
       <p id="camera-status" class="muted" style="margin-bottom:8px;"></p>
       <div id="camera-preview"></div>
       <div id="feedback-area">
+        <span id="feedback-thumb"></span>
         <p id="feedback-text">Esperando el primer escaneo.</p>
         <div id="feedback-action"></div>
       </div>
@@ -308,8 +317,12 @@ button:active{ transform:scale(0.98); }
 
     <div class="card">
       <h2>Importar desde Excel</h2>
-      <p class="muted">Sube la <strong>Lista General de productos</strong> (.xlsx, .xls o .csv). Se leen las columnas <strong>DESCRIPCIÓN</strong>, <strong>CÓDIGO</strong>, <strong>MODELO</strong> y <strong>MARCA</strong>; el resto (precios, stock, imágenes) se ignora. Si un producto ya existe, se actualizan su descripción, modelo y marca, y se conservan sus códigos de barras, ubicación y unidades por paquete. Si el archivo trae una columna de código de barras (EAN), también se vinculan.</p>
+      <p class="muted">Sube la <strong>Lista General de productos</strong> (.xlsx, .xls o .csv). Se leen las columnas <strong>DESCRIPCIÓN</strong>, <strong>CÓDIGO</strong>, <strong>MODELO</strong> y <strong>MARCA</strong>; también se guardan las <strong>fotos</strong> de cada producto (puedes desmarcarlo abajo); el resto (precios, stock) se ignora. Si un producto ya existe, se actualizan su descripción, modelo y marca, y se conservan sus códigos de barras, ubicación y unidades por paquete. Si el archivo trae una columna de código de barras (EAN), también se vinculan.</p>
       <input type="file" id="catalog-excel-input" accept=".xlsx,.xls,.csv" class="hidden">
+      <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-bottom:8px;">
+        <input type="checkbox" id="catalog-excel-photos" checked style="width:auto;">
+        Importar también las fotos (la primera vez tarda 1–2 minutos; después solo procesa las nuevas)
+      </label>
       <button type="button" id="btn-catalog-excel" class="btn-secondary">Subir archivo de Excel</button>
       <p id="catalog-excel-status" class="muted" style="margin-top:6px;"></p>
     </div>
@@ -334,6 +347,13 @@ button:active{ transform:scale(0.98); }
     <div id="catalog-product-list"></div>
   </div>
 
+</div>
+
+<div id="img-modal" class="hidden" role="dialog" aria-modal="true" aria-label="Foto del producto">
+  <img id="img-modal-img" alt="">
+  <p id="img-modal-code" style="margin-top:12px; font-family:monospace; font-size:13px; opacity:0.85;"></p>
+  <p id="img-modal-name" style="margin-top:4px; font-size:15px; font-weight:600; max-width:420px;"></p>
+  <p style="margin-top:14px; font-size:12px; opacity:0.7;">Toca en cualquier parte para cerrar</p>
 </div>
 
 <div id="scan-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="scan-modal-title">
@@ -1315,6 +1335,8 @@ function getPackSize(code){
 }
 
 function renderPickRows(){
+  // Solo se reserva espacio para fotos si el catálogo ya tiene fotos
+  const catalogHasPhotos = pickItems.some(i => (catalogInfo(i.code) || {}).img);
   const html = pickItems.map(item => {
     const s = rowStyle(item);
     const pack = getPackSize(item.code);
@@ -1332,6 +1354,7 @@ function renderPickRows(){
     }
     return '<div class="pick-wrap">'
       + '<div class="pick-row" style="border-color:'+s.border+'; background:'+s.bg+';">'
+      + (catalogHasPhotos ? thumbHtml(item.code, 48, true, item.name) : '')
       + '<div class="left"><div class="code">'+c+brandTag(item.code)+packTag+'</div><div class="name">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
       + '<div class="right">'
         + '<span class="count" style="color:'+s.count+';">'+item.picked+'/'+item.qty+'</span>'
@@ -1341,7 +1364,9 @@ function renderPickRows(){
       + '</div>'
     + '</div>' + editor + '</div>';
   }).join('');
-  document.getElementById('pick-rows').innerHTML = html;
+  const rowsEl = document.getElementById('pick-rows');
+  rowsEl.innerHTML = html;
+  hydrateThumbs(rowsEl);
 }
 
 document.getElementById('pick-rows').addEventListener('click', function(e){
@@ -1410,6 +1435,7 @@ function setFeedback(text, color, autoClear){
   fb.textContent = text;
   fb.style.color = color;
   document.getElementById('feedback-action').innerHTML = '';
+  document.getElementById('feedback-thumb').innerHTML = '';
 
   if(feedbackTimeoutId){
     clearTimeout(feedbackTimeoutId);
@@ -1417,11 +1443,21 @@ function setFeedback(text, color, autoClear){
   }
   if(autoClear){
     feedbackTimeoutId = setTimeout(function(){
+      document.getElementById('feedback-thumb').innerHTML = '';
       fb.textContent = 'Esperando el próximo escaneo.';
       fb.style.color = 'var(--text-secondary)';
       feedbackTimeoutId = null;
     }, 4000);
   }
+}
+
+// Foto del producto recién escaneado, para comparar con lo que se tiene en la mano
+function showFeedbackThumb(code){
+  const box = document.getElementById('feedback-thumb');
+  const p = catalogInfo(code);
+  const item = pickItems.find(i => i.code === code);
+  box.innerHTML = p && p.img ? thumbHtml(code, 72, true, item && item.name) : '';
+  hydrateThumbs(box);
 }
 
 function resetFeedback(){
@@ -1430,6 +1466,7 @@ function resetFeedback(){
     feedbackTimeoutId = null;
   }
   const fb = document.getElementById('feedback-text');
+  document.getElementById('feedback-thumb').innerHTML = '';
   fb.textContent = 'Esperando el primer escaneo.';
   fb.style.color = 'var(--text-secondary)';
   document.getElementById('feedback-action').innerHTML = '';
@@ -1533,6 +1570,7 @@ function handleScan(raw){
   } else {
     setFeedback('Agregado: ' + itemLabel + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--text-secondary)');
   }
+  showFeedbackThumb(item.code);
   renderPickRows();
   updateStats();
 }
@@ -1947,7 +1985,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.0',
+    version: 'V2.1',
     exportedAt: Date.now(),
     productCatalog: productCatalog,
     movimientos: loadMovimientos()
@@ -2754,6 +2792,274 @@ function splitBarcodes(text){
   return String(text || '').split(/[\s,;\/|]+/).map(s => s.trim()).filter(s => s.length >= 4);
 }
 
+// =====================================================================
+// FOTOS DE PRODUCTOS (sacadas del Excel al importarlo)
+// Cada foto del Excel está "anclada" a la fila de su producto. Al importar:
+//   1) se ubica el dibujo de la hoja y la fila de cada foto -> código del producto
+//   2) cada foto se achica a 320px (JPEG) y se guarda en el celular (IndexedDB)
+//   3) el producto guarda solo una "huella" de su foto (p.img); fotos repetidas
+//      (ej. mismas tallas) se guardan una sola vez
+// Las fotos ya procesadas antes se saltan, así reimportar el Excel es rápido.
+// =====================================================================
+const THUMB_MAX = 320;
+const IMG_DB_NAME = 'rios_fotos';
+const IMG_STORE = 'thumbs';
+let imgDbPromise = null;
+const thumbUrlCache = {}; // huella -> objectURL
+
+function openImgDb(){
+  if(imgDbPromise) return imgDbPromise;
+  imgDbPromise = new Promise((resolve, reject) => {
+    if(!window.indexedDB){ reject(new Error('Este navegador no permite guardar fotos')); return; }
+    const req = indexedDB.open(IMG_DB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(IMG_STORE); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  imgDbPromise.catch(() => { imgDbPromise = null; });
+  return imgDbPromise;
+}
+function idbRequest(mode, fn){
+  return openImgDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(IMG_STORE, mode);
+    const r = fn(tx.objectStore(IMG_STORE));
+    tx.oncomplete = () => resolve(r && r.result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  }));
+}
+const idbGetThumb = key => idbRequest('readonly', s => s.get(key));
+const idbPutThumb = (key, blob) => idbRequest('readwrite', s => s.put(blob, key));
+const idbAllThumbKeys = () => idbRequest('readonly', s => s.getAllKeys());
+const idbDeleteThumbs = keys => idbRequest('readwrite', s => { keys.forEach(k => s.delete(k)); return null; });
+
+// Huella rápida del contenido (64 bits FNV-1a) para no procesar dos veces la misma foto
+function bytesFingerprint(bytes){
+  let h1 = 0x811c9dc5, h2 = 0x01000193 ^ bytes.length;
+  for(let i = 0; i < bytes.length; i++){
+    const b = bytes[i];
+    h1 = Math.imul(h1 ^ b, 16777619);
+    h2 = Math.imul(h2 ^ b, 2246822519);
+  }
+  return bytes.length.toString(36) + '-' + (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
+}
+
+function xmlUnescape(s){
+  return String(s).replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+function zipResolve(baseFile, target){
+  if(target.charAt(0) === '/') return target.slice(1);
+  const parts = baseFile.split('/'); parts.pop();
+  target.split('/').forEach(seg => {
+    if(seg === '..') parts.pop();
+    else if(seg && seg !== '.') parts.push(seg);
+  });
+  return parts.join('/');
+}
+function zipEntryBytes(files, path){
+  const e = files[path] || files['/' + path];
+  if(!e || !e.content) return null;
+  return e.content instanceof Uint8Array ? e.content : new Uint8Array(e.content);
+}
+function zipEntryText(files, path){
+  const b = zipEntryBytes(files, path);
+  return b ? new TextDecoder('utf-8').decode(b) : '';
+}
+function parseRels(xml){
+  const rels = {};
+  (xml.match(/<Relationship\b[^>]*>/g) || []).forEach(tag => {
+    const id = (tag.match(/\bId="([^"]+)"/) || [])[1];
+    const target = (tag.match(/\bTarget="([^"]+)"/) || [])[1];
+    const type = (tag.match(/\bType="([^"]+)"/) || [])[1] || '';
+    if(id && target) rels[id] = { target: xmlUnescape(target), type: type };
+  });
+  return rels;
+}
+
+// Devuelve { fila(0-based) -> ruta de la imagen dentro del Excel } para una hoja
+function mapSheetImages(files, sheetName){
+  const wbXml = zipEntryText(files, 'xl/workbook.xml');
+  const wbRels = parseRels(zipEntryText(files, 'xl/_rels/workbook.xml.rels'));
+  let sheetPath = null;
+  (wbXml.match(/<sheet\b[^>]*>/g) || []).forEach(tag => {
+    const name = xmlUnescape((tag.match(/\bname="([^"]*)"/) || [])[1] || '');
+    const rid = (tag.match(/\br:id="([^"]+)"/) || [])[1];
+    if(name === sheetName && rid && wbRels[rid]) sheetPath = zipResolve('xl/workbook.xml', wbRels[rid].target);
+  });
+  if(!sheetPath) return {};
+  const sheetRelsPath = sheetPath.replace(/([^\/]+)$/, '_rels/$1.rels');
+  const sheetRels = parseRels(zipEntryText(files, sheetRelsPath));
+  const rowToMedia = {};
+  Object.keys(sheetRels).forEach(rid => {
+    const rel = sheetRels[rid];
+    if(!/\/drawing$/.test(rel.type)) return;
+    const drawingPath = zipResolve(sheetPath, rel.target);
+    const drawingXml = zipEntryText(files, drawingPath);
+    if(!drawingXml) return;
+    const drawingRels = parseRels(zipEntryText(files, drawingPath.replace(/([^\/]+)$/, '_rels/$1.rels')));
+    const anchorRe = /<xdr:(twoCellAnchor|oneCellAnchor)\b[^>]*>([\s\S]*?)<\/xdr:\1>/g;
+    let m;
+    while((m = anchorRe.exec(drawingXml))){
+      const body = m[2];
+      const from = body.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>(?:\s*<xdr:rowOff>(\d+)<\/xdr:rowOff>)?/);
+      const embed = body.match(/r:embed="([^"]+)"/); // en un grupo de imágenes se toma la primera
+      if(!from || !embed || !drawingRels[embed[1]]) continue;
+      const row = parseInt(from[1], 10);
+      if(rowToMedia[row] === undefined) rowToMedia[row] = zipResolve(drawingPath, drawingRels[embed[1]].target);
+    }
+  });
+  return rowToMedia;
+}
+
+const IMG_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp' };
+
+async function makeThumbnail(bytes, mime){
+  const blob = new Blob([bytes], { type: mime });
+  let bmp;
+  try{
+    bmp = await createImageBitmap(blob);
+  }catch(e){
+    // Respaldo para navegadores sin createImageBitmap con Blob
+    bmp = await new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const im = new Image();
+      im.onload = () => { URL.revokeObjectURL(url); resolve(im); };
+      im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('imagen no válida')); };
+      im.src = url;
+    });
+  }
+  const w = bmp.width, h = bmp.height;
+  const scale = Math.min(1, THUMB_MAX / Math.max(w, h));
+  const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; // los PNG transparentes quedarían negros en JPEG
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bmp, 0, 0, cw, ch);
+  if(bmp.close) bmp.close();
+  return new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('no se pudo comprimir')), 'image/jpeg', 0.8));
+}
+
+// Procesa las fotos de la hoja importada. onProgress(hechas, total)
+async function importExcelImages(workbook, table, onProgress){
+  const result = { withPhoto: 0, processed: 0, reused: 0, unsupported: 0, failed: 0, noPhoto: 0 };
+  const files = workbook.files;
+  if(!files) return result;
+  const rowToMedia = mapSheetImages(files, table.sheetName);
+
+  // fila -> código
+  const codeToMedia = {};
+  Object.keys(rowToMedia).forEach(rowStr => {
+    const row = parseInt(rowStr, 10);
+    if(row <= table.headerRow) return;
+    const code = excelCellText(table.sheet, row, table.cols.code);
+    if(code && productCatalog[code]) codeToMedia[code] = rowToMedia[rowStr];
+  });
+
+  let existingKeys = new Set();
+  try{ existingKeys = new Set(await idbAllThumbKeys()); }catch(e){ throw new Error('no se pudo abrir el almacenamiento de fotos (' + (e.message || e) + ')'); }
+
+  const mediaPaths = Array.from(new Set(Object.values(codeToMedia)));
+  const mediaKey = {}; // ruta -> huella (o null si no se pudo)
+  for(let i = 0; i < mediaPaths.length; i++){
+    const path = mediaPaths[i];
+    const ext = (path.split('.').pop() || '').toLowerCase();
+    const bytes = zipEntryBytes(files, path);
+    if(!bytes || !IMG_MIME[ext]){ mediaKey[path] = null; result.unsupported++; continue; }
+    const key = bytesFingerprint(bytes);
+    if(existingKeys.has(key)){
+      mediaKey[path] = key; result.reused++;
+    } else {
+      try{
+        const thumb = await makeThumbnail(bytes, IMG_MIME[ext]);
+        await idbPutThumb(key, thumb);
+        existingKeys.add(key);
+        mediaKey[path] = key; result.processed++;
+      }catch(e){ mediaKey[path] = null; result.failed++; }
+    }
+    if(onProgress && (i % 10 === 0 || i === mediaPaths.length - 1)){
+      onProgress(i + 1, mediaPaths.length);
+      await new Promise(r => setTimeout(r, 0)); // deja respirar a la pantalla
+    }
+  }
+
+  // Asignar a cada producto de la hoja su foto (o quitarla si ya no tiene)
+  const sheetCodes = new Set();
+  for(let r = table.headerRow + 1; r <= table.range.e.r; r++){
+    const code = excelCellText(table.sheet, r, table.cols.code);
+    if(code && productCatalog[code]) sheetCodes.add(code);
+  }
+  sheetCodes.forEach(code => {
+    const key = codeToMedia[code] ? mediaKey[codeToMedia[code]] : null;
+    if(key){ productCatalog[code].img = key; result.withPhoto++; }
+    else { delete productCatalog[code].img; result.noPhoto++; }
+  });
+  saveProductCatalog();
+
+  // Borrar del celular las fotos que ya no usa ningún producto
+  const used = new Set(Object.values(productCatalog).map(p => p.img).filter(Boolean));
+  const orphans = Array.from(existingKeys).filter(k => !used.has(k));
+  if(orphans.length){ try{ await idbDeleteThumbs(orphans); }catch(e){} }
+  orphans.forEach(k => { if(thumbUrlCache[k]){ URL.revokeObjectURL(thumbUrlCache[k]); delete thumbUrlCache[k]; } });
+
+  if(navigator.storage && navigator.storage.persist){ try{ navigator.storage.persist(); }catch(e){} }
+  return result;
+}
+
+// ---------- Mostrar fotos ----------
+// Devuelve el <img> de un producto (o un recuadro vacío). Las fotos se cargan después con hydrateThumbs().
+function thumbHtml(code, size, clickable, viewName){
+  const p = catalogInfo(code);
+  const style = 'width:' + size + 'px; height:' + size + 'px;';
+  if(!p || !p.img) return '<span class="thumb thumb-empty" style="' + style + '" aria-hidden="true"></span>';
+  const key = escapeAttr(p.img);
+  const src = thumbUrlCache[p.img] ? ' src="' + thumbUrlCache[p.img] + '"' : '';
+  const act = clickable ? ' data-view-img="' + escapeAttr(code) + '"' + (viewName ? ' data-view-name="' + escapeAttr(viewName) + '"' : '') + ' role="button" tabindex="0"' : '';
+  return '<img class="thumb" data-thumb="' + key + '"' + src + act + ' alt="Foto de ' + escapeAttr(p.name || code) + '" style="' + style + '">';
+}
+
+async function hydrateThumbs(root){
+  const imgs = (root || document).querySelectorAll('img[data-thumb]:not([src])');
+  for(const img of imgs){
+    const key = img.getAttribute('data-thumb');
+    try{
+      if(!thumbUrlCache[key]){
+        const blob = await idbGetThumb(key);
+        if(!blob){
+          const empty = document.createElement('span');
+          empty.className = 'thumb thumb-empty';
+          empty.setAttribute('style', img.getAttribute('style') || '');
+          img.replaceWith(empty);
+          continue;
+        }
+        thumbUrlCache[key] = URL.createObjectURL(blob);
+      }
+      img.src = thumbUrlCache[key];
+    }catch(e){ /* sin foto */ }
+  }
+}
+
+function openImageViewer(code, viewName){
+  const p = catalogInfo(code);
+  if(!p || !p.img) return;
+  const modal = document.getElementById('img-modal');
+  document.getElementById('img-modal-code').textContent = (findCatalogCode(code) || code) + (p.brand ? ' · ' + p.brand : '');
+  document.getElementById('img-modal-name').textContent = viewName || p.name || '';
+  const img = document.getElementById('img-modal-img');
+  img.removeAttribute('src');
+  img.setAttribute('data-thumb', p.img);
+  img.alt = 'Foto de ' + (p.name || code);
+  modal.classList.remove('hidden');
+  hydrateThumbs(modal);
+}
+document.getElementById('img-modal').addEventListener('click', function(){ this.classList.add('hidden'); });
+document.addEventListener('click', function(e){
+  const t = e.target.closest('[data-view-img]');
+  if(t){ e.preventDefault(); e.stopPropagation(); openImageViewer(t.getAttribute('data-view-img'), t.getAttribute('data-view-name')); }
+}, true);
+
 async function importCatalogFromExcel(file){
   const status = document.getElementById('catalog-excel-status');
   status.textContent = 'Leyendo el archivo... si tiene imágenes puede tardar unos segundos, no cierres la app.';
@@ -2762,8 +3068,9 @@ async function importCatalogFromExcel(file){
     if(typeof XLSX === 'undefined'){
       throw new Error('No se pudo cargar el lector de Excel (revisa tu conexión a internet)');
     }
+    const wantPhotos = document.getElementById('catalog-excel-photos').checked && /\.xlsx$/i.test(file.name || '');
     const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellHTML: false, cellFormula: false, cellStyles: false });
+    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellHTML: false, cellFormula: false, cellStyles: false, bookFiles: wantPhotos });
     const table = findCatalogTable(workbook);
 
     if(!table){
@@ -2860,6 +3167,34 @@ async function importCatalogFromExcel(file){
     if(cols.name < 0) msg += ' ⚠ No encontré la columna DESCRIPCION, así que no se crearon productos nuevos'
       + (skippedUnknown ? ' (' + skippedUnknown + ' código(s) del archivo no están en tu catálogo y se omitieron)' : '') + '.';
     status.textContent = msg;
+
+    // Fotos
+    if(wantPhotos && workbook.files){
+      const btn = document.getElementById('btn-catalog-excel');
+      btn.disabled = true;
+      status.textContent = msg + ' 📷 Preparando fotos...';
+      try{
+        const t0 = Date.now();
+        const r = await importExcelImages(workbook, table, function(done, total){
+          status.textContent = msg + ' 📷 Procesando fotos: ' + done + ' de ' + total + '... no cierres la app.';
+        });
+        let photoMsg = ' 📷 ' + r.withPhoto + ' producto(s) con foto';
+        if(r.processed) photoMsg += ' (' + r.processed + ' foto(s) nuevas';
+        if(r.reused) photoMsg += (r.processed ? ', ' : ' (') + r.reused + ' ya estaban';
+        if(r.processed || r.reused) photoMsg += ')';
+        photoMsg += ', ' + r.noPhoto + ' sin foto';
+        if(r.unsupported) photoMsg += ' (' + r.unsupported + ' foto(s) en formato que el celular no puede mostrar, como EMF)';
+        if(r.failed) photoMsg += ', ' + r.failed + ' no se pudieron leer';
+        photoMsg += '. Tardó ' + Math.round((Date.now() - t0) / 1000) + ' s.';
+        msg += photoMsg;
+      }catch(err){
+        msg += ' ⚠ No se pudieron guardar las fotos: ' + (err.message || err) + '.';
+      }finally{
+        btn.disabled = false;
+      }
+      status.textContent = msg;
+      renderCatalogList();
+    }
   }catch(err){
     status.textContent = 'No se pudo leer el archivo (' + (err.message || err) + '). Revisa que sea un .xlsx, .xls o .csv válido. Si el archivo es muy pesado (muchas imágenes) y el celular se queda pegado, prueba con una copia sin imágenes.';
   }
@@ -3000,7 +3335,10 @@ function buildCatalogCard(code){
   }
 
   return '<div class="despacho-card" data-code="' + escapeAttr(code) + '">'
-    + '<div class="title" style="font-family:monospace; font-size:13px;">' + escapeAttr(code) + badge + '</div>'
+    + '<div style="display:flex; gap:10px; align-items:center; margin-bottom:6px;">'
+      + (p.img ? thumbHtml(code, 64, true) : '')
+      + '<div class="title" style="font-family:monospace; font-size:13px; margin-bottom:0;">' + escapeAttr(code) + badge + '</div>'
+    + '</div>'
     + '<label class="muted" style="display:block; margin-bottom:2px; font-size:11px;">Descripción</label>'
     + '<input type="text" data-field="name" value="' + escapeAttr(p.name || '') + '" placeholder="Descripción del producto" style="margin-bottom:6px;">'
     + '<label class="muted" style="display:block; margin-bottom:2px; font-size:11px;">Marca</label>'
@@ -3019,7 +3357,7 @@ function buildCatalogCard(code){
 function refreshCatalogCard(code){
   const list = document.getElementById('catalog-product-list');
   const el = Array.from(list.children).find(function(c){ return c.getAttribute('data-code') === code; });
-  if(el) el.outerHTML = buildCatalogCard(code);
+  if(el){ el.outerHTML = buildCatalogCard(code); hydrateThumbs(list); }
 }
 
 function setCatalogUI(next){
@@ -3071,6 +3409,7 @@ function renderCatalogList(){
     ? '<button type="button" id="catalog-show-more" class="btn-secondary" style="margin-bottom:10px;">Ver ' + Math.min(CATALOG_PAGE_SIZE, filtered.length - visible.length) + ' más</button>'
     : '';
   container.innerHTML = resumen + visible.map(function(code){ return buildCatalogCard(code); }).join('') + more;
+  hydrateThumbs(container);
 }
 
 let catalogSearchTimer = null;
