@@ -110,7 +110,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.1</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.2</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -1985,7 +1985,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.1',
+    version: 'V2.2',
     exportedAt: Date.now(),
     productCatalog: productCatalog,
     movimientos: loadMovimientos()
@@ -2905,7 +2905,9 @@ function mapSheetImages(files, sheetName){
       const embed = body.match(/r:embed="([^"]+)"/); // en un grupo de imágenes se toma la primera
       if(!from || !embed || !drawingRels[embed[1]]) continue;
       const row = parseInt(from[1], 10);
-      if(rowToMedia[row] === undefined) rowToMedia[row] = zipResolve(drawingPath, drawingRels[embed[1]].target);
+      // Si hay dos imágenes encimadas en la misma fila, gana la última: es la que queda
+      // arriba y la que se ve en Excel (la de abajo suele ser un resto de una edición).
+      rowToMedia[row] = zipResolve(drawingPath, drawingRels[embed[1]].target);
     }
   });
   return rowToMedia;
