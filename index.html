@@ -110,7 +110,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.2</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.3</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -1985,7 +1985,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.2',
+    version: 'V2.3',
     exportedAt: Date.now(),
     productCatalog: productCatalog,
     movimientos: loadMovimientos()
@@ -2946,10 +2946,15 @@ async function makeThumbnail(bytes, mime){
 
 // Procesa las fotos de la hoja importada. onProgress(hechas, total)
 async function importExcelImages(workbook, table, onProgress){
-  const result = { withPhoto: 0, processed: 0, reused: 0, unsupported: 0, failed: 0, noPhoto: 0 };
+  const result = { withPhoto: 0, processed: 0, reused: 0, unsupported: 0, failed: 0, noPhoto: 0, noImagesInFile: false, badCodes: [] };
   const files = workbook.files;
-  if(!files) return result;
+  if(!files){ result.noImagesInFile = true; return result; }
   const rowToMedia = mapSheetImages(files, table.sheetName);
+
+  // V2.3: si el archivo no trae NINGUNA foto (ej. una copia abierta desde Google Drive
+  // o convertida a Hojas de cálculo), no se toca nada: se conservan las fotos que ya
+  // tiene el celular. Antes se borraban todas.
+  if(Object.keys(rowToMedia).length === 0){ result.noImagesInFile = true; return result; }
 
   // fila -> código
   const codeToMedia = {};
@@ -2994,8 +2999,15 @@ async function importExcelImages(workbook, table, onProgress){
     if(code && productCatalog[code]) sheetCodes.add(code);
   }
   sheetCodes.forEach(code => {
-    const key = codeToMedia[code] ? mediaKey[codeToMedia[code]] : null;
+    const media = codeToMedia[code];
+    const key = media ? mediaKey[media] : null;
     if(key){ productCatalog[code].img = key; result.withPhoto++; }
+    else if(media){
+      // La foto existe en el Excel pero está dañada o en un formato no compatible:
+      // se avisa cuál es y se conserva la foto anterior del producto, si tenía.
+      result.badCodes.push(code);
+      if(productCatalog[code].img) result.withPhoto++;
+    }
     else { delete productCatalog[code].img; result.noPhoto++; }
   });
   saveProductCatalog();
@@ -3070,8 +3082,13 @@ async function importCatalogFromExcel(file){
     if(typeof XLSX === 'undefined'){
       throw new Error('No se pudo cargar el lector de Excel (revisa tu conexión a internet)');
     }
-    const wantPhotos = document.getElementById('catalog-excel-photos').checked && /\.xlsx$/i.test(file.name || '');
+    const photosChecked = document.getElementById('catalog-excel-photos').checked;
     const arrayBuffer = await file.arrayBuffer();
+    // V2.3: el .xlsx se reconoce por su contenido (empieza con "PK", es un zip) y no por el
+    // nombre: abierto desde Google Drive u otra app, el archivo puede llegar con otro nombre.
+    const head = new Uint8Array(arrayBuffer, 0, Math.min(4, arrayBuffer.byteLength));
+    const isXlsx = head.length === 4 && head[0] === 0x50 && head[1] === 0x4B && head[2] === 0x03 && head[3] === 0x04;
+    const wantPhotos = photosChecked && isXlsx;
     const workbook = XLSX.read(arrayBuffer, { type: 'array', cellHTML: false, cellFormula: false, cellStyles: false, bookFiles: wantPhotos });
     const table = findCatalogTable(workbook);
 
@@ -3170,8 +3187,13 @@ async function importCatalogFromExcel(file){
       + (skippedUnknown ? ' (' + skippedUnknown + ' código(s) del archivo no están en tu catálogo y se omitieron)' : '') + '.';
     status.textContent = msg;
 
+    const NO_PHOTOS_HINT = ' Si lo abriste desde Google Drive, WhatsApp u otra app, descárgalo primero al celular y vuelve a importarlo desde la carpeta Descargas. Las fotos que ya tenías se conservaron.';
+    if(photosChecked && !isXlsx){
+      status.textContent = msg + ' ⚠ No se importaron fotos: este archivo no es un Excel .xlsx (puede ser .xls, .csv o una copia convertida).' + NO_PHOTOS_HINT;
+    }
+
     // Fotos
-    if(wantPhotos && workbook.files){
+    if(wantPhotos){
       const btn = document.getElementById('btn-catalog-excel');
       btn.disabled = true;
       status.textContent = msg + ' 📷 Preparando fotos...';
@@ -3180,14 +3202,22 @@ async function importCatalogFromExcel(file){
         const r = await importExcelImages(workbook, table, function(done, total){
           status.textContent = msg + ' 📷 Procesando fotos: ' + done + ' de ' + total + '... no cierres la app.';
         });
-        let photoMsg = ' 📷 ' + r.withPhoto + ' producto(s) con foto';
-        if(r.processed) photoMsg += ' (' + r.processed + ' foto(s) nuevas';
-        if(r.reused) photoMsg += (r.processed ? ', ' : ' (') + r.reused + ' ya estaban';
-        if(r.processed || r.reused) photoMsg += ')';
-        photoMsg += ', ' + r.noPhoto + ' sin foto';
-        if(r.unsupported) photoMsg += ' (' + r.unsupported + ' foto(s) en formato que el celular no puede mostrar, como EMF)';
-        if(r.failed) photoMsg += ', ' + r.failed + ' no se pudieron leer';
-        photoMsg += '. Tardó ' + Math.round((Date.now() - t0) / 1000) + ' s.';
+        let photoMsg;
+        if(r.noImagesInFile){
+          photoMsg = ' ⚠ Este archivo no trae fotos.' + NO_PHOTOS_HINT;
+        } else {
+          photoMsg = ' 📷 ' + r.withPhoto + ' producto(s) con foto';
+          if(r.processed) photoMsg += ' (' + r.processed + ' foto(s) nuevas';
+          if(r.reused) photoMsg += (r.processed ? ', ' : ' (') + r.reused + ' ya estaban';
+          if(r.processed || r.reused) photoMsg += ')';
+          photoMsg += ', ' + r.noPhoto + ' sin foto.';
+          if(r.badCodes.length){
+            photoMsg += ' ⚠ ' + r.badCodes.length + ' producto(s) tienen la foto dañada dentro del Excel o en un formato que el celular no puede mostrar (como EMF): '
+              + r.badCodes.slice(0, 10).join(', ') + (r.badCodes.length > 10 ? '…' : '')
+              + '. Para arreglarlo, borra esa imagen en el Excel y vuelve a pegarla.';
+          }
+          photoMsg += ' Tardó ' + Math.round((Date.now() - t0) / 1000) + ' s.';
+        }
         msg += photoMsg;
       }catch(err){
         msg += ' ⚠ No se pudieron guardar las fotos: ' + (err.message || err) + '.';
