@@ -286,7 +286,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
       <div id="inv-top"></div>
       <label style="font-size:13px;">Corte del stock (fecha y hora)</label>
       <input type="datetime-local" id="inv-stock-date">
-      <label class="btn-secondary" style="display:block;text-align:center;padding:10px;border:1px solid var(--border);border-radius:8px;">Cargar stock de MIFACT (.xlsx, .xls, .csv)
+      <label class="btn-secondary" style="display:block;text-align:center;padding:10px;border:1px solid var(--border);border-radius:8px;">Cargar reporte de stock de MIFACT (ReporteStockProduct .xlsx, .xls, .csv)
         <input type="file" id="inv-stock-file" accept=".xlsx,.xls,.csv" style="display:none;"></label>
       <p id="inv-stock-status" class="muted" style="font-size:13px;"></p>
     </div>
@@ -3938,25 +3938,34 @@ async function invImportStock(file){
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header:1, raw:true, defval:'' });
       for(let r = 0; r < Math.min(15, rows.length) && !f; r++){
         const h = rows[r].map(x => normHeader(x).replace(/_/g, ' '));
-        const ci = h.indexOf('CODIGO'), si = h.findIndex(x => x === 'STOCK' || x === 'STOCK ACTUAL');
-        if(ci >= 0 && si >= 0) f = { rows, r, ci, si };
+        const ci = h.indexOf('CODIGO');
+        let si = -1; ['STOCK EN ALMACEN', 'STOCK ACTUAL', 'STOCK', 'STOCK GLOBAL'].some(nm => (si = h.indexOf(nm)) >= 0);
+        if(ci >= 0 && si >= 0) f = { rows, r, ci, si, gi: h.indexOf('STOCK GLOBAL'),
+          di: Math.max(h.indexOf('PRODUCTO'), h.indexOf('DESCRIPCION')), ki: h.indexOf('CATEGORIA') };
       }
       if(f) break;
     }
     if(!f){ st.textContent = 'No encontré las columnas CODIGO y STOCK (o STOCK_ACTUAL) en las primeras 15 filas. No se cambió nada.'; return; }
-    const items = {}; let read = 0, pos = 0, neg = 0, dup = 0;
+    const items = {}, desc = {}, cat = {}, ord = []; let read = 0, pos = 0, neg = 0, dup = 0;
     for(let i = f.r + 1; i < f.rows.length; i++){
       const code = String(f.rows[i][f.ci] == null ? '' : f.rows[i][f.ci]).trim();
       if(!code) continue;
-      let v = f.rows[i][f.si]; v = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+      const num = x => typeof x === 'number' ? x : parseFloat(String(x).replace(',', '.'));
+      let v = num(f.rows[i][f.si]);
+      if(isNaN(v) && f.gi >= 0) v = num(f.rows[i][f.gi]);
       if(isNaN(v)) v = 0;
       read++;
-      if(code in items){ dup++; items[code] = round2(items[code] + v); } else items[code] = round2(v);
+      if(code in items){ dup++; items[code] = round2(items[code] + v); }
+      else {
+        items[code] = round2(v); ord.push(code);
+        if(f.di >= 0) desc[code] = String(f.rows[i][f.di] || '').trim();
+        if(f.ki >= 0) cat[code] = String(f.rows[i][f.ki] || '').trim();
+      }
     }
     Object.values(items).forEach(v => { if(v > 0) pos++; else if(v < 0) neg++; });
     let match = 0; Object.keys(items).forEach(k => { if(findCatalogCode(k)) match++; });
     const fecha = $i('inv-stock-date').value ? new Date($i('inv-stock-date').value).getTime() : Date.now();
-    invStock = { fecha, importadoEn:Date.now(), archivo:file.name, items };
+    invStock = { fecha, importadoEn:Date.now(), archivo:file.name, items, desc, cat, order: ord };
     invSave(INV_K.stock, invStock);
     st.textContent = 'Stock cargado: ' + read + ' filas, ' + pos + ' con stock > 0, ' + neg + ' negativos, ' + dup + ' códigos repetidos (sumados). ' +
       match + ' coinciden con el catálogo y ' + (Object.keys(items).length - match) + ' no (se conservan).' + warn;
@@ -4164,7 +4173,7 @@ function invRender(){
 function invHistHtml(){
   if(!invCer.length) return '';
   return '<div class="card"><h3 style="margin-top:0;">Inventarios cerrados</h3>' + invCer.map((x, i) => '<div class="inv-row"><div style="flex:1;font-size:13px;"><b>' + escapeAttr(x.name) + '</b><br><span class="muted">' + new Date(x.closedAt).toLocaleString('es-PE') + '</span></div>' +
-    '<button type="button" onclick="invDownload(' + i + ')">Descargar reporte</button> <button type="button" onclick="invDel(' + i + ')">Eliminar</button></div>').join('') + '</div>';
+    '<button type="button" onclick="invDownload(' + i + ')">Reporte de diferencias</button> <button type="button" onclick="invDownloadPlant(' + i + ')">Plantilla MIFACT</button> <button type="button" onclick="invDel(' + i + ')">Eliminar</button></div>').join('') + '</div>';
 }
 function invDel(i){ if(!confirm('¿Eliminar este inventario cerrado? No se puede deshacer.')) return; invCer.splice(i, 1); invSave(INV_K.cer, invCer); invRender(); }
 function invPanel(k){ invUI.panel = invUI.panel === k ? null : k; invUI.q = ''; invUI.msg = ''; invRender(); }
@@ -4232,7 +4241,7 @@ function invBuildReport(inv){
     const v = stk.items[k]; if(!(v > 0)) return;
     const cc = findCatalogCode(k);
     if(cc && (counts[cc] || lab(cc) !== 'Fuera de alcance')) return;
-    out.push([k, cc ? brandOf(cc) : 'FUERA DEL CATÁLOGO', cc ? (productCatalog[cc].name || '') : '', v, 'NO CONTADO']);
+    out.push([k, cc ? brandOf(cc) : 'FUERA DEL CATÁLOGO' + ((stk.cat && stk.cat[k]) ? ' (' + stk.cat[k] + ')' : ''), cc ? (productCatalog[cc].name || '') : ((stk.desc && stk.desc[k]) || ''), v, 'NO CONTADO']);
   });
   out.sort((a, b) => b[3] - a[3]);
   const cnt = e => rows.filter(r => r.e === e), un = a => round2(a.reduce((s, r) => s + r.n, 0));
@@ -4265,21 +4274,33 @@ function invBuildReport(inv){
   const unk = Object.keys(inv.unknown);
   if(unk.length) sheets.push({ name:'Sin vincular', cols:[{ header:'Código de barras', width:24 }, { header:'Veces', width:10 }, { header:'Marcas', width:30 }], rows: unk.map(k => [k, inv.unknown[k].qty, Object.keys(inv.unknown[k].brands || {}).join(', ')]) });
   // Archivo con el formato exacto de la plantilla de carga masiva de MIFACT
-  const plant = rows.filter(r => r.L !== 'Fuera de alcance' && r.s != null).map(r => [r.c, r.p.name || '', '', r.s, r.n]);
+  // Lista COMPLETA en el orden del reporte de MIFACT: STOCK_FISICO_ACTUAL solo se llena en lo que está en el alcance
+  // (lo demás queda vacío = no se toca). Un conteo parcial fuera del alcance tampoco se envía.
+  const phys = {};
+  if(stk) rows.forEach(r => { if(r.L !== 'Fuera de alcance'){ const k = ix.key(r.c); if(k != null) phys[k] = r.n; } });
+  const plant = stk ? (stk.order || Object.keys(stk.items)).map(k => [k, (stk.desc && stk.desc[k]) || '', '', stk.items[k], (k in phys) ? phys[k] : '']) : [];
   return { sheets, plant };
 }
-async function invDownload(i){ await invEmit(invCer[i]); }
-async function invEmit(inv){
+async function invDownload(i){ await invEmit(invCer[i], true, false); }
+async function invDownloadPlant(i){ await invEmit(invCer[i], false, true); }
+async function invEmit(inv, main, plantilla){
+  if(main === undefined){ main = true; plantilla = true; }
   const rep = invBuildReport(inv), d = new Date(inv.closedAt || Date.now()).toISOString().slice(0, 10);
-  const nm = String(inv.name).replace(/[^\w\-]+/g, '_');
-  let blob;
-  try{ await ensureExcelJS(); blob = new Blob([await buildStyledWorkbook({ sheets:rep.sheets })], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }); }
-  catch(e){ blob = buildPlainWorkbookBlob({ sheets:rep.sheets }); }
-  downloadBlob(blob, 'inventario_' + nm + '_' + d + '.xlsx');
-  const ws = XLSX.utils.aoa_to_sheet([['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL']].concat(rep.plant));
-  ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lista de productos');
-  setTimeout(() => downloadBlob(new Blob([XLSX.write(wb, { bookType:'xlsx', type:'array' })], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'PLANTILLA_PRODUCTOS_MIFACT_inventario_' + d + '.xlsx'), 600);
+  const nm = String(inv.name).replace(/[^\w\-]+/g, '_'), XT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if(main){
+    let blob;
+    try{ await ensureExcelJS(); blob = new Blob([await buildStyledWorkbook({ sheets:rep.sheets })], { type:XT }); }
+    catch(e){ blob = buildPlainWorkbookBlob({ sheets:rep.sheets }); }
+    downloadBlob(blob, 'inventario_' + nm + '_' + d + '.xlsx');
+  }
+  if(plantilla){
+    if(!rep.plant.length){ alert('No hay stock de MIFACT guardado en este inventario: no se puede armar la plantilla.'); return; }
+    const ws = XLSX.utils.aoa_to_sheet([['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL']].concat(rep.plant));
+    ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lista de productos');
+    const out = new Blob([XLSX.write(wb, { bookType:'xlsx', type:'array' })], { type:XT });
+    setTimeout(() => downloadBlob(out, 'PLANTILLA_PRODUCTOS_MIFACT_10702389190_' + d + '.xlsx'), main ? 700 : 0);
+  }
 }
 async function invClose(){
   invFlushPend();
