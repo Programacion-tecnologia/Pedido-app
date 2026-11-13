@@ -108,12 +108,54 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 .inv-info{ background:var(--success-bg); color:var(--success-text); border:1px solid var(--success-border); border-radius:8px; padding:8px 10px; margin:6px 0; font-size:13px; }
 .inv-brandbtn{ display:block; width:100%; text-align:left; padding:10px; border:0; border-bottom:1px solid var(--border); border-radius:0; background:var(--card); font-size:14px; }
 .inv-label{ display:block; margin-bottom:4px; font-size:12px; }
+/* V2.7: avisos del inventario dentro de la app */
+.inv-err{ background:var(--danger-bg); color:var(--danger-text); border:1px solid var(--danger-border); border-radius:8px; padding:8px 10px; margin:0 0 10px; font-size:13px; }
+.inv-err button{ font-size:12px; padding:4px 8px; margin-left:6px; }
+.inv-danger{ background:var(--danger-text) !important; color:#fff !important; border-color:var(--danger-text) !important; }
+.inv-edit{ border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin:-2px 0 6px; background:var(--card); }
+.desk-brand{ display:none; }
+
+/* V2.7: vista de PC (pantallas de 1100px o más). En el celular no se aplica nada de esto. */
+@media (min-width:1100px){
+  body{ max-width:none; padding:20px 28px 48px 272px; }
+  #sidebar-drawer{ transform:none; width:244px; max-width:none; box-shadow:none; border-right:1px solid var(--border); padding:22px 14px; transition:none; }
+  #sidebar-drawer > h2{ display:none; }
+  .desk-brand{ display:block; padding:0 10px 18px; }
+  .desk-brand b{ display:block; font-size:16px; font-weight:600; }
+  .desk-brand span{ font-size:12px; color:var(--text-secondary); }
+  #sidebar-backdrop, #sidebar-toggle-btn, #top-bar{ display:none !important; }
+  #app{ max-width:1620px; }
+  /* Contabilización: datos y escaneo a la izquierda, lista del pedido a la derecha */
+  #screen-build, #screen-pick{ display:grid; grid-template-columns:430px minmax(0,1fr); grid-template-rows:repeat(14, auto) 1fr; column-gap:20px; align-items:start; }
+  #screen-build > *, #screen-pick > *{ grid-column:1; }
+  #screen-build > .card-build-list{ grid-column:2; grid-row:1 / -1; }
+  #screen-pick > #pick-rows{ grid-column:2; grid-row:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:0 10px; align-content:start; }
+  #feedback-thumb .thumb{ width:96px !important; height:96px !important; }
+  /* Catálogo: herramientas a la izquierda, buscador y productos en cuadrícula a la derecha */
+  #page-catalogo:not(.hidden){ display:grid; grid-template-columns:430px minmax(0,1fr); grid-template-rows:auto 1fr; column-gap:20px; align-items:start; }
+  #page-catalogo > .cat-top{ grid-column:2; grid-row:1; }
+  #page-catalogo > .cat-tools{ grid-column:1; grid-row:1 / -1; }
+  #page-catalogo > #catalog-product-list{ grid-column:2; grid-row:2; display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr)); gap:0 12px; align-items:start; }
+  #catalog-product-list > p, #catalog-product-list > button{ grid-column:1 / -1; }
+  /* Inventario: escaneo y alcance a la izquierda; pendientes y contados lado a lado */
+  #page-inventario:not(.hidden){ display:grid; grid-template-columns:430px minmax(0,1fr); grid-template-rows:repeat(4, auto) 1fr; column-gap:20px; align-items:start; }
+  #page-inventario > *, #inv-body > *{ grid-column:1; }
+  #inv-body{ display:contents; }
+  #inv-body > .inv-lists{ grid-column:2; grid-row:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:start; }
+  #inv-body > .inv-lists-one{ grid-template-columns:minmax(0,680px); }
+  /* Despachos y recepciones realizados en cuadrícula */
+  #despachos-list, #recepciones-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(420px,1fr)); gap:0 14px; align-items:start; }
+  #despachos-list > p, #recepciones-list > p{ grid-column:1 / -1; }
+  #page-despachos > input, #page-recepciones > input, #page-despachos > button, #page-recepciones > button{ max-width:560px; }
+  #page-inicio, #page-metricas{ max-width:980px; }
+}
 </style>
 </head>
 <body>
 
 <div id="sidebar-backdrop"></div>
 <div id="sidebar-drawer">
+  <div class="desk-brand"><b>Verificador de pedidos</b><span>Rios Performance - almacén · <span id="desk-version"></span></span></div>
   <h2 style="margin-bottom:14px;">Menú</h2>
   <button type="button" class="nav-btn" data-page="inicio">Inicio</button>
   <button type="button" class="nav-btn" data-page="contabilizacion">Contabilización</button>
@@ -127,7 +169,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.6</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.7</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -218,7 +260,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
       </form>
     </div>
 
-    <div class="card">
+    <div class="card card-build-list">
       <h2>Productos del pedido (<span id="count-build">0</span>)</h2>
       <div id="build-list"></div>
     </div>
@@ -310,12 +352,15 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
   </div>
 
   <div id="page-catalogo" class="hidden">
+    <div class="cat-top">
     <div class="card">
       <h2>Catálogo de productos</h2>
       <input type="text" id="catalog-search" placeholder="Buscar por código, nombre o marca" style="margin-bottom:0;">
     </div>
 
     <div class="card" id="catalog-barcode-alert" style="display:none;"></div>
+    </div>
+    <div class="cat-tools">
 
     <div class="card">
       <h2>Registrar producto</h2>
@@ -381,6 +426,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
       <input type="text" id="catalog-new-location" placeholder="Ubicación (ej: Estante B-2)" style="margin-bottom:8px;">
       <button type="button" id="btn-catalog-add" class="btn-secondary">Agregar al catálogo</button>
       <p id="catalog-add-status" class="muted" style="margin-top:6px;"></p>
+    </div>
     </div>
     <div id="catalog-product-list"></div>
   </div>
@@ -2026,7 +2072,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.6',
+    version: 'V2.7',
     exportedAt: Date.now(),
     inventario: { stock: invStock, activo: invAct, cerrados: invCer },
     productCatalog: productCatalog,
@@ -3918,7 +3964,7 @@ function invLoad(k, d){ try{ const s = localStorage.getItem(k); return s ? JSON.
 let invWarned = false;
 function invSave(k, v){
   try{ localStorage.setItem(k, JSON.stringify(v)); return true; }
-  catch(e){ if(!invWarned){ invWarned = true; alert('No se pudo guardar en el celular (almacenamiento lleno). Descarga un respaldo ahora.'); } return false; }
+  catch(e){ if(typeof invUI !== 'undefined') invUI.err = 'No se pudo guardar en este equipo (almacenamiento lleno). Descarga un respaldo ahora desde Inicio.'; return false; }
 }
 let invStock = invLoad(INV_K.stock, null), invAct = invLoad(INV_K.act, null), invCer = invLoad(INV_K.cer, []);
 let invUI = { filter:null, more:30, pend:null, last:null, panel:null, msg:'', q:'' };
@@ -4011,12 +4057,20 @@ function invSearch(q){
   return out;
 }
 function invChip(label, done, total, key){
-  const q = key === '*P' ? 'Productos seleccionados' : key;
+  const q = key === '*P' ? 'Productos seleccionados' : key, k = escapeAttr(key);
   const full = total != null && done >= total && total > 0;
-  return '<div class="inv-chip"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><b>' + escapeAttr(q) + '</b>' +
-    '<span class="badge ' + (full ? 'badge-success' : 'badge-warning') + '">' + done + (total != null ? ' de ' + total : '') + ' contados</span></div>' +
-    '<div class="inv-actions"><button type="button" class="' + (invUI.filter === key ? 'toggle-btn active' : '') + '" style="flex:1;" onclick="invFilter(\'' + escapeAttr(key) + '\')">' + (invUI.filter === key ? 'Ocultar los que faltan' : 'Ver los que faltan') + '</button>' +
-    '<button type="button" aria-label="Quitar del alcance" style="color:var(--danger-text);" onclick="invRemoveChip(\'' + escapeAttr(key) + '\')">Quitar</button></div></div>';
+  let h = '<div class="inv-chip"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><b>' + escapeAttr(q) + '</b>' +
+    '<span class="badge ' + (full ? 'badge-success' : 'badge-warning') + '">' + done + (total != null ? ' de ' + total : '') + ' contados</span></div>';
+  if(invUI.confirmChip === key){
+    // Confirmación dentro de la ficha (V2.7: sin ventanas emergentes)
+    h += '<div style="font-size:13px;margin-top:8px;">¿Quitar <b>' + escapeAttr(q) + '</b> del alcance? Lo que ya contaste no se borra.</div>' +
+      '<div class="inv-actions"><button type="button" class="inv-danger" style="flex:1;" onclick="invRemoveChip(\'' + k + '\', true)">Sí, quitar</button>' +
+      '<button type="button" style="flex:1;" onclick="invUI.confirmChip=null;invRender();">Cancelar</button></div>';
+  } else {
+    h += '<div class="inv-actions"><button type="button" class="' + (invUI.filter === key ? 'toggle-btn active' : '') + '" style="flex:1;" onclick="invFilter(\'' + k + '\')">' + (invUI.filter === key ? 'Ocultar los que faltan' : 'Ver los que faltan') + '</button>' +
+      '<button type="button" aria-label="Quitar del alcance" style="color:var(--danger-text);" onclick="invUI.confirmChip=\'' + k + '\';invRender();">Quitar</button></div>';
+  }
+  return h + '</div>';
 }
 function invChipData(){
   const counts = invCounts(), sc = invStockCodes(), res = [];
@@ -4033,10 +4087,11 @@ function invChipData(){
   return res;
 }
 function invFilter(key){ invUI.filter = (invUI.filter === key) ? null : key; invUI.more = 30; invRender(); }
-function invRemoveChip(key){
-  if(!confirm('¿Quitar "' + (key === '*P' ? 'Productos seleccionados' : key) + '" del alcance? Lo contado no se borra.')) return;
+function invRemoveChip(key, ok){
+  if(!ok){ invUI.confirmChip = key; invRender(); return; }
   if(key === '*P') invAct.scope.products = []; else invAct.scope.brands = invAct.scope.brands.filter(b => b !== key);
   if(invUI.filter === key) invUI.filter = null;
+  invUI.confirmChip = null;
   invPersist(); invRender();
 }
 function invPersist(){ return invSave(INV_K.act, invAct); }
@@ -4070,55 +4125,83 @@ function invAdd(code, n){
   if(v === 0){ delete B.items[code]; delete B.ts[code]; } else { B.items[code] = v; B.ts[code] = Date.now(); }
   B.updatedAt = Date.now(); invPersist();
 }
-function invSelect(code){ invUI.sel = (invUI.sel === code) ? null : code; invRender(); }
+function invHasScope(){ return invAct.scope.brands.length + invAct.scope.products.length > 0; }
+function invSelect(code){
+  invUI.sel = (invUI.sel === code) ? null : code;
+  invUI.forceFocus = true; // V2.7: al elegir un producto el lector queda listo sin tocar el campo
+  invRender();
+}
 function invScan(raw){
   raw = String(raw || '').trim(); if(!raw || !invAct) return;
   const code = barcodeIndex[raw] || findCatalogCode(raw);
-  // Hay un producto elegido de la lista y el código de barras no está vinculado: se vincula, pidiendo confirmación
-  if(!code && invUI.sel && productCatalog[invUI.sel]){
-    const sc = invUI.sel, p = productCatalog[sc];
-    if(confirm('El código de barras "' + raw + '" no está vinculado a ningún producto.\n\n¿Es este producto?\n' + sc + ' · ' + (p.name || '') + '\n\nSi aceptas, se vincula y se cuenta.')){
-      invFlushPend();
-      const pack = getPackSize(sc);
-      linkBarcodeToProduct(raw, sc); invAdd(sc, pack);
-      const nb = (p.barcodes || []).length;
-      invUI.last = { code:sc, pack, total: invCounts()[sc] || 0, fuera: invAct.scope.brands.length + invAct.scope.products.length > 0 && !invCovered(sc) };
-      invMsg('Código vinculado y contado.' + (nb >= 2 ? ' Ojo: este producto ahora tiene ' + nb + ' códigos de barras.' : ''));
-      invRender(); return;
-    }
-  }
   if(!code){
+    // V2.7: código sin vincular -> aviso dentro del área de escaneo, como en Contabilización
     if(invUI.pend && invUI.pend.barcode === raw) invUI.pend.n++;
-    else { invFlushPend(); invUI.pend = { barcode:raw, n:1 }; }
-    invUI.panel = 'link'; invRender(); return;
+    else { invFlushPend(); invUI.pend = { barcode:raw, n:1 }; invUI.linkQ = ''; }
+    invUI.last = null; invMsg('');
+    if(navigator.vibrate) try{ navigator.vibrate([80, 60, 80]); }catch(e){}
+    invRender(); return;
   }
   invFlushPend();
   const pack = getPackSize(code);
   invAdd(code, pack);
-  invUI.last = { code, pack, total: invCounts()[code] || 0, fuera: invAct.scope.brands.length + invAct.scope.products.length > 0 && !invCovered(code) };
+  invUI.last = { code, pack, paq: pack, total: invCounts()[code] || 0, fuera: invHasScope() && !invCovered(code) };
   invMsg('');
   if(navigator.vibrate) try{ navigator.vibrate(60); }catch(e){}
   invRender();
 }
-function invMsg(m){ invUI.msg = m; clearTimeout(invMsgT); if(m) invMsgT = setTimeout(() => { invUI.msg = ''; invRender(); }, 4000); }
+function invMsg(m){ invUI.msg = m; invUI.msgWarn = false; clearTimeout(invMsgT); if(m) invMsgT = setTimeout(() => { invUI.msg = ''; invRender(); }, 4000); }
 function invLink(code){
-  const p = invUI.pend; if(!p) return;
-  if(!confirm('¿Vincular el código "' + p.barcode + '" con este producto?\n' + code + ' · ' + ((productCatalog[code] || {}).name || ''))) return;
+  const p = invUI.pend; if(!p || !productCatalog[code]) return;
   const pack = getPackSize(code);
   linkBarcodeToProduct(p.barcode, code);
   invAdd(code, p.n * pack);
   const nb = (productCatalog[code].barcodes || []).length;
-  invUI.pend = null; invUI.panel = null; invUI.q = '';
-  invMsg('Vinculado y contado: ' + p.n * pack + ' u.' + (nb >= 2 ? ' Ojo: este producto ahora tiene ' + nb + ' códigos de barras.' : ''));
+  invUI.pend = null; invUI.linkQ = '';
+  invUI.last = { code, pack: p.n * pack, paq: pack, total: invCounts()[code] || 0, fuera: invHasScope() && !invCovered(code) };
+  invMsg('Código ' + p.barcode + ' vinculado a ' + code + ' y contado.' + (nb >= 2 ? ' Ojo: este producto ahora tiene ' + nb + ' códigos de barras.' : ''));
+  invUI.forceFocus = true;
   invRender();
 }
-function invSkip(){ invFlushPend(); invUI.panel = null; invUI.q = ''; invRender(); }
+function invSkip(){
+  invFlushPend(); invUI.linkQ = '';
+  invMsg('Código anotado en «Sin vincular»: aparece en el reporte de diferencias.');
+  invUI.forceFocus = true; invRender();
+}
+// Aviso de código sin vincular (mismo formato que el de Contabilización)
+function invPendHtml(){
+  const P = invUI.pend; if(!P) return '';
+  let h = '<p style="color:var(--danger-text);font-size:13px;margin:10px 0 0;">Código no encontrado en tu catálogo: "' + escapeAttr(P.barcode) + '".' + (P.n > 1 ? ' (escaneado ' + P.n + ' veces)' : '') + '</p>';
+  const sel = invUI.sel && productCatalog[invUI.sel] ? invUI.sel : null;
+  if(sel){
+    const nm = productCatalog[sel].name || '';
+    h += '<div style="margin-top:8px;"><label class="muted inv-label">¿Es el código de barras del producto elegido?</label>' +
+      '<div class="inv-row selected" style="margin-bottom:6px;">' + thumbHtml(sel, 40, true, nm) + '<div class="left">' + invCodeLine(sel) + '<div class="name">' + escapeAttr(nm) + '</div></div></div>' +
+      '<button type="button" class="btn-primary" onclick="invLink(\'' + escapeAttr(sel) + '\')">Vincular y contar' + (P.n > 1 ? ' (' + P.n + ')' : '') + '</button></div>';
+  }
+  const res = invUI.linkQ ? invSearch(invUI.linkQ) : [];
+  h += '<div style="margin-top:8px;' + (sel ? 'border-top:1px solid var(--border);padding-top:8px;' : '') + '">' +
+    '<label class="muted inv-label" for="inv-link-q">' + (sel ? '¿Es de otro producto? Búscalo' : '¿De qué producto es? Búscalo') + ' por código, nombre o marca' + (sel ? '' : ', o toca uno en «Productos a inventariar»') + '</label>' +
+    '<input type="text" id="inv-link-q" autocomplete="off" placeholder="Ej: 00.45.01 o PUÑO" value="' + escapeAttr(invUI.linkQ || '') + '" style="margin-bottom:6px;" ' +
+      'oninput="invUI.linkQ=this.value;clearTimeout(invUI.lqt);invUI.lqt=setTimeout(function(){invUI.focusLink=true;invRender();},300);">' +
+    res.map(c => '<div class="inv-row">' + thumbHtml(c, 40, true, productCatalog[c].name) + '<div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr(productCatalog[c].name || '') + '</div></div>' +
+      '<button type="button" onclick="invLink(\'' + escapeAttr(c) + '\')">Vincular</button></div>').join('') +
+    (invUI.linkQ && !res.length ? '<p class="muted" style="font-size:12px;">No encontré productos con ese texto.</p>' : '') + '</div>' +
+    '<button type="button" class="btn-secondary" style="margin-top:4px;" onclick="invSkip()">Omitir por ahora (queda en «Sin vincular»)</button>';
+  return h;
+}
 function invAdj(code, d){ invAdd(code, d); invRender(); }
-function invEdit(code){
-  const cur = invCounts()[code] || 0, v = prompt('Cantidad contada para ' + code, cur);
-  if(v == null) return; const n = parseFloat(String(v).replace(',', '.'));
-  if(isNaN(n) || n < 0) return;
-  invAdd(code, n - cur); invRender();
+// V2.7: editar cantidad dentro de la fila (como en Contabilización), sin ventana emergente
+function invEdit(code){ invUI.edit = (invUI.edit === code) ? null : code; invUI.editErr = ''; invRender(); }
+function invSaveEdit(code){
+  const el = $i('inv-edit-qty'); if(!el) return;
+  const n = parseFloat(String(el.value).replace(',', '.'));
+  if(isNaN(n) || n < 0){ invUI.editErr = 'Escribe un número igual o mayor que 0.'; invRender(); return; }
+  const cur = invCounts()[code] || 0;
+  invAdd(code, n - cur);
+  invUI.edit = null; invUI.editErr = '';
+  invMsg('Cantidad de ' + code + ' actualizada a ' + invFmt(n) + '.');
+  invUI.forceFocus = true; invRender();
 }
 function invUnlinkedCount(){ return Object.keys(invAct.unknown).length + (invUI.pend ? 1 : 0); }
 async function invCam(){
@@ -4141,10 +4224,12 @@ async function invStopCam(){
 function invLeave(){ invStopCam(); if(invAct) invFlushPend(); }
 // ---- Pantalla ----
 function invNew(){
-  const name = prompt('Nombre del inventario (ej. Biker noviembre)', ''); if(name == null) return;
-  invAct = { id:'inv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: name.trim() || 'Inventario', createdAt:Date.now(), closedAt:null,
+  const el = $i('inv-new-name'), name = el ? el.value.trim() : '';
+  invAct = { id:'inv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: name || 'Inventario', createdAt:Date.now(), closedAt:null,
     stockDate: invStock ? invStock.fecha : null, worker: localStorage.getItem('rios_worker_name') || '', scope:{ brands:[], products:[] }, brands:{}, unknown:{} };
-  invPersist(); invUI = { filter:null, more:30, pend:null, last:null, panel:null, msg:'', q:'' }; invRender();
+  invPersist();
+  invUI = { filter:null, more:30, pend:null, last:null, panel:null, msg:'', q:'', forceFocus:true };
+  invRender();
 }
 // Código en letra de máquina + etiqueta de marca + paquete, igual que en Contabilización
 function invCodeLine(code){
@@ -4157,56 +4242,85 @@ function invLine(code, counts, showStock){
   let s = '';
   if(showStock && ix){ const v = ix.get(code) || 0, col = n === v ? 'var(--success-text)' : (n < v ? 'var(--warning-text)' : 'var(--danger-text)'); s = '<div style="font-size:12px;margin-top:2px;color:' + col + ';">MIFACT: ' + invFmt(v) + ' · contado: ' + invFmt(n) + '</div>'; }
   const c = escapeAttr(code), pk = getPackSize(code);
-  return '<div class="inv-row">' + thumbHtml(code, 48, true, p.name) + '<div class="left">' + invCodeLine(code) +
+  let h = '<div class="inv-row' + (invUI.edit === code ? ' selected' : '') + '">' + thumbHtml(code, 48, true, p.name) + '<div class="left">' + invCodeLine(code) +
     '<div class="name">' + escapeAttr(p.name || '(sin nombre)') + '</div>' + s + '</div>' +
     '<div class="inv-qty"><span class="count">' + invFmt(n) + '</span>' +
     '<button type="button" class="minus-btn" aria-label="Quitar ' + pk + '" onclick="invAdj(\'' + c + '\',-' + pk + ')">-</button>' +
     '<button type="button" class="minus-btn" aria-label="Sumar ' + pk + '" onclick="invAdj(\'' + c + '\',' + pk + ')">+</button>' +
     '<button type="button" class="minus-btn" aria-label="Editar cantidad" onclick="invEdit(\'' + c + '\')">✎</button></div></div>';
+  if(invUI.edit === code){
+    h += '<div class="inv-edit"><label class="muted inv-label" for="inv-edit-qty">Cantidad contada (escribe el total)</label>' +
+      '<input type="number" min="0" step="any" id="inv-edit-qty" value="' + invFmt(n) + '" style="margin-bottom:6px;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();invSaveEdit(\'' + c + '\');}">' +
+      (invUI.editErr ? '<p style="color:var(--danger-text);font-size:12px;margin:0 0 6px;">' + escapeAttr(invUI.editErr) + '</p>' : '') +
+      '<div style="display:flex;gap:6px;"><button type="button" class="btn-primary" style="flex:1;" onclick="invSaveEdit(\'' + c + '\')">Guardar</button>' +
+      '<button type="button" style="flex:1;" onclick="invUI.edit=null;invUI.editErr=\'\';invRender();">Cerrar</button></div></div>';
+  }
+  return h;
+}
+function invMsgBox(){
+  if(!invUI.msg) return '';
+  return '<div class="' + (invUI.msgWarn ? 'inv-warn' : 'inv-info') + '">' + escapeAttr(invUI.msg) + '</div>';
 }
 function invRender(){
   if(!$i('page-inventario')) return;
   const top = $i('inv-top');
-  let h = '<div class="muted" style="font-size:13px;">' + (invStock ? 'Stock MIFACT: <b>' + escapeAttr(invStock.archivo) + '</b> (' + Object.keys(invStock.items).length + ' códigos, corte ' + new Date(invStock.fecha).toLocaleString('es-PE') + ')' : 'Aún no hay stock de MIFACT cargado.') + '</div>';
-  top.innerHTML = h;
+  top.innerHTML = '<div class="muted" style="font-size:13px;">' + (invStock ? 'Stock MIFACT: <b>' + escapeAttr(invStock.archivo) + '</b> (' + Object.keys(invStock.items).length + ' códigos, corte ' + new Date(invStock.fecha).toLocaleString('es-PE') + ')' : 'Aún no hay stock de MIFACT cargado.') + '</div>';
   const body = $i('inv-body');
-  if(!invAct){ $i('inv-scan-card').style.display = 'none'; body.innerHTML = '<div class="card"><h2>Nuevo inventario</h2><p class="muted">Carga primero el stock de MIFACT (arriba) para que el reporte compare lo contado contra el sistema.</p><button type="button" class="btn-primary" onclick="invNew()">Iniciar inventario</button></div>' + invHistHtml(); return; }
+  const errBox = invUI.err ? '<div class="inv-err">' + escapeAttr(invUI.err) + ' <button type="button" onclick="invUI.err=\'\';invRender();">Entendido</button></div>' : '';
+  if(!invAct){
+    $i('inv-scan-card').style.display = 'none';
+    body.innerHTML = '<div class="inv-main">' + errBox + invMsgBox() +
+      '<div class="card"><h2>Nuevo inventario</h2><p class="muted">Carga primero el stock de MIFACT (arriba) para que el reporte compare lo contado contra el sistema.</p>' +
+      '<label class="muted inv-label" for="inv-new-name">Nombre del inventario</label>' +
+      '<input type="text" id="inv-new-name" placeholder="Ej: Biker noviembre" autocomplete="off" style="margin-bottom:10px;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();invNew();}">' +
+      '<button type="button" class="btn-primary" onclick="invNew()">Iniciar inventario</button></div></div>' +
+      '<div class="inv-lists inv-lists-one"><div class="inv-list-a">' + invHistHtml() + '</div></div>';
+    try{ hydrateThumbs(body); }catch(e){}
+    return;
+  }
   const counts = invCounts(), codes = Object.keys(counts), units = codes.reduce((s, c) => s + counts[c], 0), chips = invChipData();
   const showStock = localStorage.getItem(INV_K.show) === '1';
-  let o = '<div class="muted" style="margin:-4px 2px 10px; font-size:12px; line-height:1.5;">Inventario <b style="color:var(--text);">' + escapeAttr(invAct.name) + '</b> · iniciado ' + new Date(invAct.createdAt).toLocaleString('es-PE') + (invAct.worker ? ' · ' + escapeAttr(invAct.worker) : '') + '</div>' +
+  // --- Columna principal: contexto, resumen y alcance ---
+  let main = errBox + '<div class="muted" style="margin:-4px 2px 10px; font-size:12px; line-height:1.5;">Inventario <b style="color:var(--text);">' + escapeAttr(invAct.name) + '</b> · iniciado ' + new Date(invAct.createdAt).toLocaleString('es-PE') + (invAct.worker ? ' · ' + escapeAttr(invAct.worker) : '') + '</div>' +
     '<div class="stat-grid">' +
       '<div class="stat-box"><div class="num">' + codes.length + '</div><div class="lbl">Productos</div></div>' +
       '<div class="stat-box"><div class="num">' + invFmt(units) + '</div><div class="lbl">Unidades</div></div>' +
       '<div class="stat-box"><div class="num">' + chips.length + '</div><div class="lbl">Fichas</div></div>' +
       '<div class="stat-box"><div class="num"' + (invUnlinkedCount() ? ' style="color:var(--danger-text);"' : '') + '>' + invUnlinkedCount() + '</div><div class="lbl">Sin vincular</div></div>' +
     '</div>';
-  o += '<div class="card"><h2>Alcance del conteo</h2>' +
+  main += '<div class="card"><h2>Alcance del conteo</h2>' +
     (chips.length ? chips.map(c => invChip('', c.done, c.total, c.key)).join('') : '<div class="inv-warn">Sin alcance: lo que escanees se compara, pero lo no escaneado no se evaluará.</div>') +
     '<div style="display:flex;gap:6px;margin-top:8px;"><button type="button" class="toggle-btn' + (invUI.panel === 'brand' ? ' active' : '') + '" style="flex:1;border:1px solid var(--border);" onclick="invPanel(\'brand\')">+ Marca completa</button>' +
     '<button type="button" class="toggle-btn' + (invUI.panel === 'prod' ? ' active' : '') + '" style="flex:1;border:1px solid var(--border);" onclick="invPanel(\'prod\')">+ Productos</button></div>' + invPanelHtml() + '</div>';
-  if(invUI.filter){
-    const c = chips.find(x => x.key === invUI.filter);
-    if(c) o += '<div class="card"><h2>Faltan en ' + escapeAttr(c.key === '*P' ? 'Productos seleccionados' : c.key) + ' · ' + c.pend.length + '</h2>' +
-      c.pend.slice(0, 60).map(k => '<div class="inv-row">' + thumbHtml(k, 40, true, (productCatalog[k] || {}).name) + '<div class="left">' + invCodeLine(k) + '<div class="name">' + escapeAttr((productCatalog[k] || {}).name || '') + '</div></div></div>').join('') +
-      (c.pend.length > 60 ? '<div class="muted">… y ' + (c.pend.length - 60) + ' más</div>' : '') + '</div>';
-  }
+  // --- Área de escaneo: producto elegido, aviso de código sin vincular, último escaneo ---
   let fb = '';
-  if(invUI.msg) fb += '<div class="inv-info">' + escapeAttr(invUI.msg) + '</div>';
-  if(invUI.last){
+  if(invUI.sel && productCatalog[invUI.sel]) fb += '<div class="inv-row selected" style="margin-top:8px;">' + thumbHtml(invUI.sel, 44, true, productCatalog[invUI.sel].name) +
+    '<div class="left"><div class="muted" style="font-size:11px;font-weight:600;">PRODUCTO ELEGIDO · escanea su código</div>' + invCodeLine(invUI.sel) + '<div class="name">' + escapeAttr(productCatalog[invUI.sel].name || '') + '</div></div>' +
+    '<button type="button" onclick="invSelect(\'' + escapeAttr(invUI.sel) + '\')">Quitar</button></div>';
+  if(invUI.pend) fb += invPendHtml();
+  fb += invMsgBox();
+  if(invUI.last && !invUI.pend){
     const L = invUI.last, p = productCatalog[L.code] || {};
     fb += '<div class="inv-info" style="display:flex;gap:10px;align-items:center;">' + thumbHtml(L.code, 48, true, p.name) + '<div style="min-width:0;"><div class="muted" style="font-family:monospace;font-size:11px;">' + escapeAttr(L.code) + ' · ' + escapeAttr(invBrand(L.code)) + '</div>' +
-      '<div>' + escapeAttr(p.name || L.code) + '</div><b>+' + L.pack + (L.pack > 1 ? ' (paq. ×' + L.pack + ')' : '') + ' · total ' + invFmt(L.total) + '</b></div></div>';
-    if(L.fuera) fb += '<div class="inv-warn">Este producto no está en el alcance.<br><button type="button" onclick="invAddProduct(\'' + escapeAttr(L.code) + '\');invUI.last.fuera=false;invRender();">Agregar este producto al alcance</button> ' +
-      '<button type="button" onclick="invAddBrand(\'' + escapeAttr(invBrand(L.code)) + '\');invUI.last.fuera=false;">Agregar la marca ' + escapeAttr(invBrand(L.code)) + ' completa</button></div>';
+      '<div>' + escapeAttr(p.name || L.code) + '</div><b>+' + invFmt(L.pack) + ((L.paq || 1) > 1 ? ' (paq. ×' + L.paq + ')' : '') + ' · total ' + invFmt(L.total) + '</b></div></div>';
+    if(L.fuera) fb += '<div class="inv-warn">Este producto no está en el alcance.<div class="inv-actions"><button type="button" style="flex:1;" onclick="invAddProduct(\'' + escapeAttr(L.code) + '\');invUI.last.fuera=false;invRender();">Agregar este producto</button>' +
+      '<button type="button" style="flex:1;" onclick="invAddBrand(\'' + escapeAttr(invBrand(L.code)) + '\');invUI.last.fuera=false;">Agregar la marca ' + escapeAttr(invBrand(L.code)) + '</button></div></div>';
   }
-  if(invUI.sel && productCatalog[invUI.sel]) fb = '<div class="inv-warn" style="display:flex;gap:8px;align-items:center;">' + thumbHtml(invUI.sel, 44, true, productCatalog[invUI.sel].name) + '<div style="flex:1;font-size:13px;"><b>Producto elegido</b><br>' + escapeAttr(invUI.sel) + ' · ' + escapeAttr(productCatalog[invUI.sel].name || '') + '</div><button type="button" onclick="invSelect(\'' + escapeAttr(invUI.sel) + '\')">Quitar</button></div>' + fb;
   $i('inv-fb').innerHTML = fb;
   $i('inv-scan-card').style.display = '';
   $i('inv-cam-btn').textContent = invQr ? 'Apagar cámara' : 'Escanear con cámara';
-  // Lista de productos a inventariar (con foto). Sin cantidades: el conteo sigue a ciegas.
+  // --- Listas ---
+  let listA = '';
+  if(invUI.filter){
+    const c = chips.find(x => x.key === invUI.filter);
+    if(c) listA += '<div class="card"><h2>Faltan en ' + escapeAttr(c.key === '*P' ? 'Productos seleccionados' : c.key) + ' · ' + c.pend.length + '</h2>' +
+      c.pend.slice(0, 60).map(k => '<div class="inv-row">' + thumbHtml(k, 40, true, (productCatalog[k] || {}).name) + '<div class="left">' + invCodeLine(k) + '<div class="name">' + escapeAttr((productCatalog[k] || {}).name || '') + '</div></div></div>').join('') +
+      (c.pend.length > 60 ? '<div class="muted">… y ' + (c.pend.length - 60) + ' más</div>' : '') + '</div>';
+  }
+  // Lista de productos a inventariar (con foto). Sin cantidades de MIFACT: el conteo sigue a ciegas.
   const tg = invTargets(), lt = invUI.lt || 'pend', lm = invUI.lmore || 30;
   const tgv = tg.filter(c => lt === 'todos' || (lt === 'pend' ? !counts[c] : !!counts[c]));
-  o += '<div class="card"><h2>Productos a inventariar · ' + tg.length + '</h2>' + (tg.length ? '<div class="muted" style="font-size:12px;margin-bottom:8px;">Toca un producto para elegirlo: si escaneas un código de barras que no está vinculado, te pregunta si es ese producto.</div>' : '') +
+  listA += '<div class="card"><h2>Productos a inventariar · ' + tg.length + '</h2>' + (tg.length ? '<div class="muted" style="font-size:12px;margin-bottom:8px;">Toca un producto para elegirlo y escanea: si su código de barras no está vinculado, te ofrece vincularlo a ese producto.</div>' : '') +
     (tg.length ? '<div style="display:flex;gap:6px;margin-bottom:8px;">' + [['pend', 'Pendientes'], ['cont', 'Contados'], ['todos', 'Todos']].map(t => '<button type="button" class="toggle-btn' + (lt === t[0] ? ' active' : '') + '" style="flex:1;text-align:center;border:1px solid var(--border);' + (lt === t[0] ? 'border-color:var(--accent);' : '') + '" onclick="invUI.lt=\'' + t[0] + '\';invUI.lmore=30;invRender();">' + t[1] + '</button>').join('') + '</div>' +
       tgv.slice(0, lm).map(c => '<div class="inv-row' + (invUI.sel === c ? ' selected' : '') + '" style="cursor:pointer;" onclick="invSelect(\'' + escapeAttr(c) + '\')">' + thumbHtml(c, 48, false) + '<div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr((productCatalog[c] || {}).name || '') + '</div></div>' +
         (invUI.sel === c ? '<span class="badge" style="background:var(--accent);color:#fff;">Elegido</span>' : (counts[c] ? '<span class="badge badge-success">✓ ' + invFmt(counts[c]) + '</span>' : '<span class="badge badge-warning">Pendiente</span>')) + '</div>').join('') +
@@ -4215,17 +4329,23 @@ function invRender(){
   let list = codes;
   if(invUI.filter){ list = invUI.filter === '*P' ? codes.filter(c => invAct.scope.products.includes(c)) : codes.filter(c => invBrand(c) === invUI.filter); }
   list.sort((a, b) => Math.max(...Object.values(invAct.brands).map(B => B.ts[b] || 0)) - Math.max(...Object.values(invAct.brands).map(B => B.ts[a] || 0)));
-  o += '<div class="card"><h2>Contado' + (invUI.filter ? ' (filtrado)' : '') + ' · ' + list.length + '</h2>' +
+  const listB = '<div class="card"><h2>Contado' + (invUI.filter ? ' (filtrado)' : '') + ' · ' + list.length + '</h2>' +
     '<label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-bottom:8px;"><input type="checkbox" style="width:auto;" ' + (showStock ? 'checked' : '') + ' onchange="localStorage.setItem(\'' + INV_K.show + '\',this.checked?\'1\':\'0\');invRender();"> Mostrar stock MIFACT (rompe el conteo a ciegas)</label>' +
     (list.length ? '' : '<p class="muted">Todavía no has escaneado nada.</p>') + list.slice(0, invUI.more).map(c => invLine(c, counts, showStock)).join('') +
     (list.length > invUI.more ? '<button type="button" class="btn-secondary" onclick="invUI.more+=30;invRender();">Ver más</button>' : '') + '</div>';
-  o += invFormatsHtml() + invHistHtml();
   const pv = $i('inv-paste') ? $i('inv-paste').value : '';
-  body.innerHTML = o;
+  // Contenedores: en el celular van uno debajo del otro (mismo orden de siempre); en PC se acomodan en columnas
+  body.innerHTML = '<div class="inv-main">' + main + '</div>' +
+    '<div class="inv-lists"><div class="inv-list-a">' + listA + '</div><div class="inv-list-b">' + listB + '</div></div>' +
+    '<div class="inv-end">' + invFormatsHtml() + invHistHtml() + '</div>';
   if(pv && $i('inv-paste')) $i('inv-paste').value = pv;
-  if(invUI.focusQ){ invUI.focusQ = false; const q = $i('inv-q'); if(q){ q.focus(); const n = q.value.length; try{ q.setSelectionRange(n, n); }catch(e){} } }
   try{ hydrateThumbs($i('inv-body')); hydrateThumbs($i('inv-fb')); }catch(e){}
-  invFocus();
+  // Foco: buscador abierto > búsqueda de vínculo > edición de cantidad > campo de escaneo
+  const putEnd = el => { el.focus({ preventScroll:true }); try{ const n = el.value.length; el.setSelectionRange(n, n); }catch(e){} };
+  if(invUI.focusQ && $i('inv-q')){ invUI.focusQ = false; putEnd($i('inv-q')); }
+  else if(invUI.focusLink && $i('inv-link-q')){ invUI.focusLink = false; putEnd($i('inv-link-q')); }
+  else if(invUI.edit && $i('inv-edit-qty') && document.activeElement !== $i('inv-edit-qty')){ const e = $i('inv-edit-qty'); e.focus({ preventScroll:true }); try{ e.select(); }catch(x){} }
+  else invFocus();
 }
 function invTargets(){
   const set = new Set(), sc = invStockCodes();
@@ -4236,27 +4356,55 @@ function invTargets(){
   invAct.scope.products.forEach(c => set.add(c));
   return Array.from(set).sort((x, y) => String(x).localeCompare(String(y), 'es', { numeric:true }));
 }
-// El campo de escaneo vive fuera de lo que se redibuja y siempre recupera el foco (lector Bluetooth = teclado + Enter)
+// El campo de escaneo vive fuera de lo que se redibuja y recupera el foco (lector = teclado + Enter).
+// V2.7: no le quita el foco a otro campo donde la persona esté escribiendo.
 function invFocus(){
   const i = $i('inv-scan-input'), pg = $i('page-inventario');
-  if(!i || !invAct || pg.classList.contains('hidden') || (invUI.panel && invUI.panel !== 'link')) return;
+  if(!i || !invAct || pg.classList.contains('hidden')) return;
+  const force = invUI.forceFocus; invUI.forceFocus = false;
+  const a = document.activeElement;
+  if(!force && a && a !== i && invIsTyping(a)) return;
   if(document.activeElement !== i) i.focus({ preventScroll:true });
+}
+function invIsTyping(a){
+  return !!a && (/^(TEXTAREA|SELECT)$/.test(a.tagName) || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file)$/.test(a.type)));
 }
 (function(){
   const i = $i('inv-scan-input');
   i.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); const v = i.value; i.value = ''; invScan(v); } });
   i.addEventListener('blur', () => setTimeout(() => { const a = document.activeElement; if(!a || a === document.body || a.tagName === 'BUTTON' || a.tagName === 'LABEL') invFocus(); }, 60));
   $i('page-inventario').addEventListener('click', e => { if(!/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(invFocus, 80); });
+  // V2.7: si el lector "escribe" cuando el foco no está en ningún campo (después de tocar un producto,
+  // un botón o una casilla), lo escrito se lleva al campo de escaneo en vez de perderse.
+  document.addEventListener('keydown', e => {
+    const pg = $i('page-inventario');
+    if(!invAct || !pg || pg.classList.contains('hidden')) return;
+    const a = document.activeElement;
+    if(a === i || invIsTyping(a) || e.ctrlKey || e.altKey || e.metaKey) return;
+    if(e.key.length === 1 && e.key !== ' '){ e.preventDefault(); i.focus({ preventScroll:true }); i.value += e.key; }
+  }, true);
 })();
 function invHistHtml(){
   if(!invCer.length) return '';
-  return '<h2 style="margin:18px 2px 10px;">Inventarios cerrados</h2>' + invCer.map((x, i) => '<div class="despacho-card"><div class="title">' + escapeAttr(x.name) + '</div>' +
+  const hm = invUI.histMsg ? '<div class="' + (invUI.histMsg.warn ? 'inv-warn' : 'inv-info') + '">' + escapeAttr(invUI.histMsg.text) + '</div>' : '';
+  return '<h2 style="margin:18px 2px 10px;">Inventarios cerrados</h2>' + hm + invCer.map((x, i) => '<div class="despacho-card"><div class="title">' + escapeAttr(x.name) + '</div>' +
     '<div class="muted" style="font-size:12px;">Cerrado ' + new Date(x.closedAt).toLocaleString('es-PE') + ' · ' + Object.keys(invCounts(x)).length + ' producto(s) contados' + (x.worker ? ' · ' + escapeAttr(x.worker) : '') + '</div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"><button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDownloadPlant(' + i + ')">Plantilla MIFACT</button>' +
-    '<button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDownload(' + i + ')">Reporte de diferencias</button>' +
-    '<button type="button" style="font-size:13px;padding:8px 10px;color:var(--danger-text);" onclick="invDel(' + i + ')">Eliminar</button></div></div>').join('');
+    (invUI.confirmDel === x.id
+      ? '<div style="font-size:13px;margin-top:10px;">¿Eliminar este inventario cerrado? No se puede deshacer.</div>' +
+        '<div style="display:flex;gap:6px;margin-top:8px;"><button type="button" class="inv-danger" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDel(' + i + ', true)">Sí, eliminar</button>' +
+        '<button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invUI.confirmDel=null;invRender();">Cancelar</button></div>'
+      : '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"><button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDownloadPlant(' + i + ')">Plantilla MIFACT</button>' +
+        '<button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDownload(' + i + ')">Reporte de diferencias</button>' +
+        '<button type="button" style="font-size:13px;padding:8px 10px;color:var(--danger-text);" onclick="invDel(' + i + ')">Eliminar</button></div>') +
+    '</div>').join('');
 }
-function invDel(i){ if(!confirm('¿Eliminar este inventario cerrado? No se puede deshacer.')) return; invCer.splice(i, 1); invSave(INV_K.cer, invCer); invRender(); }
+function invDel(i, ok){
+  const x = invCer[i]; if(!x) return;
+  if(!ok){ invUI.confirmDel = x.id; invRender(); return; }
+  invCer.splice(i, 1); invSave(INV_K.cer, invCer);
+  invUI.confirmDel = null; invUI.histMsg = { text:'Inventario «' + x.name + '» eliminado.', warn:false };
+  invRender();
+}
 function invPanel(k){ invUI.panel = invUI.panel === k ? null : k; invUI.q = ''; invUI.msg = ''; invUI.focusQ = !!invUI.panel; invRender(); }
 function invPanelHtml(){
   const p = invUI.panel; if(!p) return '';
@@ -4271,20 +4419,12 @@ function invPanelHtml(){
   if(p === 'prod'){
     const res = invSearch(invUI.q);
     return '<div style="margin-top:8px;"><input type="text" id="inv-q" placeholder="Buscar código, nombre, marca o modelo" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invUI.focusQ=true;clearTimeout(invUI.qt);invUI.qt=setTimeout(invRender,350);">' +
-      res.map(c => '<div class="inv-row"><div style="flex:1;font-size:13px;">' + escapeAttr(c) + '<br>' + escapeAttr(productCatalog[c].name || '') + (invCovered(c) ? '<br><i>cubierto</i>' : '') + '</div><button type="button" onclick="invAddProduct(\'' + escapeAttr(c) + '\');invRender();">Agregar</button></div>').join('') +
+      res.map(c => '<div class="inv-row"><div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr(productCatalog[c].name || '') + (invCovered(c) ? ' <i class="muted">(ya está en el alcance)</i>' : '') + '</div></div><button type="button" onclick="invAddProduct(\'' + escapeAttr(c) + '\');invRender();">Agregar</button></div>').join('') +
       '<textarea id="inv-paste" rows="4" placeholder="Pegar lista de códigos (uno por línea)" style="width:100%;margin-top:6px;"></textarea><button type="button" class="btn-secondary" onclick="invPasteList()">Agregar lista</button>' +
       (invUI.msg ? '<div class="inv-info">' + escapeAttr(invUI.msg) + '</div>' : '') + '</div>';
   }
-  if(p === 'link' && invUI.pend){
-    const res = invSearch(invUI.q);
-    return '<div class="inv-warn" style="margin-top:8px;">Código sin vincular: <b>' + escapeAttr(invUI.pend.barcode) + '</b> (' + invUI.pend.n + ' lectura/s). Busca el producto:' +
-      '<input type="text" placeholder="Buscar producto" value="' + escapeAttr(invUI.q) + '" onchange="invUI.q=this.value;invRender();">' +
-      res.map(c => '<div class="inv-row"><div style="flex:1;font-size:13px;">' + escapeAttr(c) + '<br>' + escapeAttr(productCatalog[c].name || '') + '</div><button type="button" onclick="invLink(\'' + escapeAttr(c) + '\')">Vincular</button></div>').join('') +
-      '<button type="button" onclick="invSkip()">Omitir</button></div>';
-  }
   return '';
 }
-function invBrandFilter(){ /* re-render ligero al escribir en el buscador de marcas */ const keep = invUI.q; invRender(); const i = document.querySelector('#inv-brand-list') && document.querySelector('#inv-brand-list').previousElementSibling; if(i){ i.focus(); i.setSelectionRange(keep.length, keep.length); } }
 // ---- Reporte ----
 function invMovSince(fecha){
   const d = {}, r = {};
@@ -4367,17 +4507,19 @@ function invBuildReport(inv){
     .map(k => { if(!dsrc[k]) noDesc++; return [k, dsrc[k] || '', '', stk.items[k], phys[k]]; }) : [];
   return { sheets, plant, noDesc };
 }
-async function invDownload(i){ await invEmit(invCer[i], true, false); }
-async function invDownloadPlant(i){ await invEmit(invCer[i], false, true); }
+async function invDownload(i){ const n = await invEmit(invCer[i], true, false); invUI.histMsg = n.length ? { text:n.join(' '), warn:true } : { text:'Reporte de diferencias descargado.', warn:false }; invRender(); }
+async function invDownloadPlant(i){ const n = await invEmit(invCer[i], false, true); invUI.histMsg = n.length ? { text:n.join(' '), warn:true } : { text:'Plantilla de MIFACT descargada.', warn:false }; invRender(); }
+// Devuelve una lista de avisos (V2.7: se muestran dentro de la app, no en ventanas emergentes)
 async function invEmit(inv, main, plantilla){
   if(main === undefined){ main = true; plantilla = true; }
+  const notes = [];
   const rep = invBuildReport(inv), d = new Date(inv.closedAt || Date.now()).toISOString().slice(0, 10);
   const nm = String(inv.name).replace(/[^\w\-]+/g, '_'), XT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   // 1) La plantilla de MIFACT va PRIMERO y sin esperas: es la que se sube tal cual a la carga masiva
   if(plantilla){
-    if(!rep.plant.length){ alert('No hay stock de MIFACT guardado en este inventario: no se puede armar la plantilla.'); }
+    if(!rep.plant.length){ notes.push('No hay stock de MIFACT guardado en este inventario: no se pudo armar la plantilla.'); }
     else {
-      if(rep.noDesc) alert('Ojo: ' + rep.noDesc + ' producto(s) salen sin descripción porque el stock cargado no la trae. Vuelve a cargar el ReporteStockProduct de MIFACT en Inventario y descarga la plantilla otra vez.');
+      if(rep.noDesc) notes.push('Ojo: ' + rep.noDesc + ' producto(s) salen sin descripción en la plantilla porque el stock cargado no la trae. Vuelve a cargar el ReporteStockProduct de MIFACT y descarga la plantilla otra vez desde «Inventarios cerrados».');
       const ws = XLSX.utils.aoa_to_sheet([['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL']].concat(rep.plant));
       ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lista de productos');
@@ -4391,6 +4533,7 @@ async function invEmit(inv, main, plantilla){
     catch(e){ blob = buildPlainWorkbookBlob({ sheets:rep.sheets }); }
     setTimeout(() => downloadBlob(blob, 'inventario_' + nm + '_' + d + '.xlsx'), plantilla ? 1200 : 0);
   }
+  return notes;
 }
 // ---- V2.5: formatos a descargar al cerrar ----
 // La elección se guarda dentro del inventario abierto (viaja en el respaldo). Inventarios de
@@ -4416,26 +4559,41 @@ function invFormatsHtml(){
   let warn = '';
   if(f.plant && !invStock) warn = '<div class="inv-warn">No hay stock de MIFACT cargado: la plantilla no se podrá generar. Carga el ReporteStockProduct arriba antes de cerrar.</div>';
   if(!n) warn = '<div class="inv-warn">No elegiste ningún formato: se cerrará sin descargar nada. Podrás bajar los archivos después desde «Inventarios cerrados».</div>';
-  const btn = n ? 'Cerrar inventario y descargar ' + (n === 1 ? '1 archivo' : n + ' archivos') : 'Cerrar inventario sin descargar';
-  return '<div class="card"><h2>Archivos al cerrar</h2>' + rows + warn +
-    '<button type="button" class="btn-primary" style="margin-top:6px;" onclick="invClose()">' + btn + '</button></div>';
+  let action;
+  if(invUI.closing){
+    // V2.7: confirmación dentro de la tarjeta, sin ventana emergente
+    const counts = invCounts(), pend = invChipData().reduce((s, c) => s + c.pend.length, 0);
+    const chosen = INV_FORMATS.filter(x => f[x.key]).map(x => x.label.replace(/ \(\.xlsx\)$/, ''));
+    action = '<div class="inv-warn" style="margin-top:6px;"><b>¿Cerrar el inventario «' + escapeAttr(invAct.name) + '»?</b><br>' +
+      'Productos contados: ' + Object.keys(counts).length + ' · En el alcance sin contar: ' + pend + (invUI.pend ? '<br>El código sin vincular se anotará en «Sin vincular».' : '') +
+      (invStock ? '' : '<br>Ojo: no hay stock de MIFACT cargado.') + '<br>Se descargará: ' + (chosen.length ? chosen.join(' y ') : 'nada (podrás bajarlos después)') + '.</div>' +
+      '<div style="display:flex;gap:6px;"><button type="button" class="btn-primary" style="flex:1;" onclick="invClose(true)">Sí, cerrar</button>' +
+      '<button type="button" style="flex:1;" onclick="invUI.closing=false;invRender();">Cancelar</button></div>';
+  } else {
+    const btn = n ? 'Cerrar inventario y descargar ' + (n === 1 ? '1 archivo' : n + ' archivos') : 'Cerrar inventario sin descargar';
+    action = '<button type="button" class="btn-primary" style="margin-top:6px;" onclick="invClose()">' + btn + '</button>';
+  }
+  return '<div class="card"><h2>Archivos al cerrar</h2>' + rows + warn + action + '</div>';
 }
-async function invClose(){
+async function invClose(ok){
+  if(!invAct) return;
+  if(!ok){ invUI.closing = true; invRender(); return; }
   invFlushPend();
-  const counts = invCounts(), pend = invChipData().reduce((s, c) => s + c.pend.length, 0), f = invFormats();
-  const chosen = INV_FORMATS.filter(x => f[x.key]).map(x => '• ' + x.label.replace(/ \(\.xlsx\)$/, ''));
-  if(!confirm('¿Cerrar el inventario "' + invAct.name + '"?\nProductos contados: ' + Object.keys(counts).length + '\nEn alcance sin contar: ' + pend + (invStock ? '' : '\nOJO: no hay stock de MIFACT cargado.') +
-    '\n\nSe descargará:\n' + (chosen.length ? chosen.join('\n') : '(nada — podrás bajarlos después desde Inventarios cerrados)'))) return;
+  const f = invFormats();
   const inv = JSON.parse(JSON.stringify(invAct)); inv.closedAt = Date.now();
   inv.stockSnapshot = invStock ? { fecha:invStock.fecha, archivo:invStock.archivo, items:invStock.items, desc:invStock.desc || {}, cat:invStock.cat || {}, order:invStock.order || Object.keys(invStock.items) } : null;
-  const ok = invSave(INV_K.cer, [inv].concat(invCer));
-  if(ok){ invCer = [inv].concat(invCer); invAct = null; invSave(INV_K.act, null); }
-  else alert('No se pudo guardar el cierre. El inventario sigue abierto; el reporte se descarga igual.');
-  if(f.plant || f.diff) await invEmit(inv, f.diff, f.plant);
+  const saved = invSave(INV_K.cer, [inv].concat(invCer));
+  invUI.closing = false;
+  if(saved){ invCer = [inv].concat(invCer); invAct = null; invSave(INV_K.act, null); invUI.err = ''; }
+  const notes = (f.plant || f.diff) ? await invEmit(inv, f.diff, f.plant) : [];
   const got = [];
   if(f.plant && inv.stockSnapshot) got.push('la plantilla de MIFACT lista para la carga masiva');
   if(f.diff) got.push('el reporte de diferencias');
-  invUI.msg = 'Inventario cerrado. ' + (got.length ? 'Se descargó ' + got.join(' y ') + '. Si el celular bloqueó alguna descarga, bájala desde Inventarios cerrados.' : 'No se descargó ningún archivo; puedes bajarlos desde Inventarios cerrados.');
+  clearTimeout(invMsgT);
+  invUI.sel = null; invUI.last = null; invUI.filter = null; invUI.edit = null; invUI.pend = null;
+  invUI.msg = (saved ? 'Inventario «' + inv.name + '» cerrado. ' : 'No se pudo guardar el cierre (almacenamiento lleno): el inventario sigue abierto. ') +
+    (got.length ? 'Se descargó ' + got.join(' y ') + '. Si el equipo bloqueó alguna descarga, bájala desde «Inventarios cerrados». ' : (saved ? 'No se descargó ningún archivo; puedes bajarlos desde «Inventarios cerrados». ' : '')) + notes.join(' ');
+  invUI.msgWarn = !saved || notes.length > 0;
   invRender();
 }
 // ---- Respaldo: fusionar sin pisar ----
@@ -4464,6 +4622,8 @@ function invMerge(inc){
 $i('inv-stock-file').addEventListener('change', e => { if(e.target.files[0]) invImportStock(e.target.files[0]); e.target.value = ''; });
 (function(){ const n = new Date(), p = x => String(x).padStart(2, '0'); $i('inv-stock-date').value = n.getFullYear() + '-' + p(n.getMonth() + 1) + '-' + p(n.getDate()) + 'T' + p(n.getHours()) + ':' + p(n.getMinutes()); })();
 
+// V2.7: número de versión también en el menú fijo de la vista de PC
+(function(){ const v = document.querySelector('#top-bar h1 .muted'), d = document.getElementById('desk-version'); if(v && d) d.textContent = v.textContent; })();
 renderCatalogStatus();
 renderBuildList();
 showPage('inicio');
