@@ -4309,9 +4309,13 @@ function invBuildReport(inv){
   // en el orden del reporte. Lo que NO se contó queda con STOCK_FISICO_ACTUAL vacío (MIFACT no lo toca). Si no hay alcance, los productos escaneados. Un conteo parcial fuera del alcance NO se envía.
   const noScope = !sc.brands.length && !sc.products.length, phys = {};
   if(stk) rows.forEach(r => { if(r.L !== 'Fuera de alcance' || noScope){ const k = ix.key(r.c); if(k != null && (r.n > 0 || r.L !== 'Fuera de alcance')) phys[k] = r.n > 0 ? r.n : ''; } });
-  const plant = stk ? (stk.order || Object.keys(stk.items)).filter(k => k in phys)
-    .map(k => { const cc = findCatalogCode(k); return [k, (stk.desc && stk.desc[k]) || (cc && productCatalog[cc] ? productCatalog[cc].name || '' : ''), '', stk.items[k], phys[k]]; }) : [];
-  return { sheets, plant };
+  // Descripción EXACTA de MIFACT (la del reporte). Inventarios cerrados con versiones anteriores no la guardaron: se toma del stock actual.
+  const dsrc = (stk && stk.desc && Object.keys(stk.desc).length) ? stk.desc : ((invStock && invStock.desc) || {});
+  const osrc = (stk && stk.order) || (invStock && invStock.order) || (stk ? Object.keys(stk.items) : []);
+  let noDesc = 0;
+  const plant = stk ? osrc.filter(k => (k in phys) && (k in stk.items))
+    .map(k => { if(!dsrc[k]) noDesc++; return [k, dsrc[k] || '', '', stk.items[k], phys[k]]; }) : [];
+  return { sheets, plant, noDesc };
 }
 async function invDownload(i){ await invEmit(invCer[i], true, false); }
 async function invDownloadPlant(i){ await invEmit(invCer[i], false, true); }
@@ -4323,6 +4327,7 @@ async function invEmit(inv, main, plantilla){
   if(plantilla){
     if(!rep.plant.length){ alert('No hay stock de MIFACT guardado en este inventario: no se puede armar la plantilla.'); }
     else {
+      if(rep.noDesc) alert('Ojo: ' + rep.noDesc + ' producto(s) salen sin descripción porque el stock cargado no la trae. Vuelve a cargar el ReporteStockProduct de MIFACT en Inventario y descarga la plantilla otra vez.');
       const ws = XLSX.utils.aoa_to_sheet([['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL']].concat(rep.plant));
       ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lista de productos');
@@ -4342,7 +4347,7 @@ async function invClose(){
   const counts = invCounts(), pend = invChipData().reduce((s, c) => s + c.pend.length, 0);
   if(!confirm('¿Cerrar el inventario "' + invAct.name + '"?\nProductos contados: ' + Object.keys(counts).length + '\nEn alcance sin contar: ' + pend + (invStock ? '' : '\nOJO: no hay stock de MIFACT cargado.'))) return;
   const inv = JSON.parse(JSON.stringify(invAct)); inv.closedAt = Date.now();
-  inv.stockSnapshot = invStock ? { fecha:invStock.fecha, archivo:invStock.archivo, items:invStock.items } : null;
+  inv.stockSnapshot = invStock ? { fecha:invStock.fecha, archivo:invStock.archivo, items:invStock.items, desc:invStock.desc || {}, cat:invStock.cat || {}, order:invStock.order || Object.keys(invStock.items) } : null;
   const ok = invSave(INV_K.cer, [inv].concat(invCer));
   if(ok){ invCer = [inv].concat(invCer); invAct = null; invSave(INV_K.act, null); }
   else alert('No se pudo guardar el cierre. El inventario sigue abierto; el reporte se descarga igual.');
