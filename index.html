@@ -4305,11 +4305,12 @@ function invBuildReport(inv){
   const unk = Object.keys(inv.unknown);
   if(unk.length) sheets.push({ name:'Sin vincular', cols:[{ header:'Código de barras', width:24 }, { header:'Veces', width:10 }, { header:'Marcas', width:30 }], rows: unk.map(k => [k, inv.unknown[k].qty, Object.keys(inv.unknown[k].brands || {}).join(', ')]) });
   // Archivo con el formato exacto de la plantilla de carga masiva de MIFACT
-  // Lista COMPLETA en el orden del reporte de MIFACT: STOCK_FISICO_ACTUAL solo se llena en lo que está en el alcance
-  // (lo demás queda vacío = no se toca). Un conteo parcial fuera del alcance tampoco se envía.
-  const phys = {};
-  if(stk) rows.forEach(r => { if(r.L !== 'Fuera de alcance'){ const k = ix.key(r.c); if(k != null) phys[k] = r.n; } });
-  const plant = stk ? (stk.order || Object.keys(stk.items)).map(k => [k, (stk.desc && stk.desc[k]) || '', '', stk.items[k], (k in phys) ? phys[k] : '']) : [];
+  // Plantilla de carga masiva de MIFACT: SOLO los productos que se están inventariando (alcance o seleccionados),
+  // en el orden del reporte. Lo que NO se contó queda con STOCK_FISICO_ACTUAL vacío (MIFACT no lo toca). Si no hay alcance, los productos escaneados. Un conteo parcial fuera del alcance NO se envía.
+  const noScope = !sc.brands.length && !sc.products.length, phys = {};
+  if(stk) rows.forEach(r => { if(r.L !== 'Fuera de alcance' || noScope){ const k = ix.key(r.c); if(k != null && (r.n > 0 || r.L !== 'Fuera de alcance')) phys[k] = r.n > 0 ? r.n : ''; } });
+  const plant = stk ? (stk.order || Object.keys(stk.items)).filter(k => k in phys)
+    .map(k => { const cc = findCatalogCode(k); return [k, (stk.desc && stk.desc[k]) || (cc && productCatalog[cc] ? productCatalog[cc].name || '' : ''), '', stk.items[k], phys[k]]; }) : [];
   return { sheets, plant };
 }
 async function invDownload(i){ await invEmit(invCer[i], true, false); }
