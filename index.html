@@ -92,14 +92,22 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 #scan-modal{ position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:60; display:flex; align-items:center; justify-content:center; padding:16px; }
 #scan-modal .scan-box{ background:var(--card); border-radius:12px; padding:14px; width:100%; max-width:440px; }
 #scan-modal-preview{ width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; margin-bottom:10px; }
-.inv-chip{ border:1px solid var(--border); border-radius:10px; padding:8px; margin-bottom:6px; font-size:14px; }
-.inv-chip button,.inv-row button,.inv-warn button{ margin:4px 4px 0 0; padding:6px 10px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:13px; }
-.inv-row{ display:flex; gap:8px; align-items:center; border-top:1px solid var(--border); padding:6px 0; }
-.inv-qty{ display:flex; align-items:center; gap:4px; } .inv-qty button{ margin:0; padding:6px 10px; border:1px solid var(--border); border-radius:8px; background:#fff; }
-.inv-sum{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; text-align:center; font-size:12px; } .inv-sum b{ font-size:18px; }
-.inv-warn{ background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:8px; padding:8px; margin:6px 0; font-size:13px; }
-.inv-info{ background:var(--success-bg); color:var(--success-text); border-radius:8px; padding:8px; margin:6px 0; font-size:13px; }
-.inv-brandbtn{ display:block; width:100%; text-align:left; padding:8px; border:0; border-bottom:1px solid var(--border); background:#fff; font-size:14px; }
+/* Inventario (V2.6: mismos tamaños, bordes y colores que Contabilización y Catálogo) */
+.inv-chip{ border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:6px; font-size:13px; background:var(--card); }
+.inv-chip .inv-actions{ display:flex; gap:6px; margin-top:6px; }
+.inv-chip button,.inv-row button,.inv-warn button{ font-size:13px; padding:7px 10px; }
+.inv-row{ display:flex; gap:10px; align-items:center; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--card); margin-bottom:6px; }
+.inv-row .left{ flex:1; min-width:0; }
+.inv-row .code{ font-family:monospace; font-size:11px; color:var(--text-secondary); }
+.inv-row .name{ font-size:13px; line-height:1.3; overflow-wrap:anywhere; margin-top:2px; }
+.inv-row.selected{ border-color:var(--accent); background:var(--accent-bg, #E6F1FB); }
+.inv-qty{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.inv-qty .count{ font-size:14px; font-weight:600; min-width:26px; text-align:center; }
+.inv-row .inv-qty button.minus-btn{ width:28px; height:28px; padding:0; border-radius:6px; font-size:14px; }
+.inv-warn{ background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:8px; padding:8px 10px; margin:6px 0; font-size:13px; }
+.inv-info{ background:var(--success-bg); color:var(--success-text); border:1px solid var(--success-border); border-radius:8px; padding:8px 10px; margin:6px 0; font-size:13px; }
+.inv-brandbtn{ display:block; width:100%; text-align:left; padding:10px; border:0; border-bottom:1px solid var(--border); border-radius:0; background:var(--card); font-size:14px; }
+.inv-label{ display:block; margin-bottom:4px; font-size:12px; }
 </style>
 </head>
 <body>
@@ -119,7 +127,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.4</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.6</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -215,7 +223,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
       <div id="build-list"></div>
     </div>
 
-    <button id="btn-start-verification" class="btn-primary">Iniciar verificación ?</button>
+    <button id="btn-start-verification" class="btn-primary">Iniciar verificación →</button>
     <p id="build-status" class="muted" style="margin-top:8px;"></p>
 
   </section>
@@ -283,18 +291,19 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
   <div id="page-inventario" class="hidden">
     <div class="card">
       <h2>Inventario</h2>
-      <div id="inv-top"></div>
-      <label style="font-size:13px;">Corte del stock (fecha y hora)</label>
-      <input type="datetime-local" id="inv-stock-date">
-      <label class="btn-secondary" style="display:block;text-align:center;padding:10px;border:1px solid var(--border);border-radius:8px;">Cargar reporte de stock de MIFACT (ReporteStockProduct .xlsx, .xls, .csv)
-        <input type="file" id="inv-stock-file" accept=".xlsx,.xls,.csv" style="display:none;"></label>
-      <p id="inv-stock-status" class="muted" style="font-size:13px;"></p>
+      <div id="inv-top" style="margin-bottom:10px;"></div>
+      <label class="muted inv-label" for="inv-stock-date">Corte del stock (fecha y hora)</label>
+      <input type="datetime-local" id="inv-stock-date" style="margin-bottom:10px;">
+      <input type="file" id="inv-stock-file" accept=".xlsx,.xls,.csv" class="hidden">
+      <button type="button" class="btn-secondary" onclick="document.getElementById('inv-stock-file').click()">Cargar stock de MIFACT</button>
+      <p class="muted" style="font-size:12px; margin:6px 0 0;">Archivo ReporteStockProduct (.xlsx, .xls o .csv).</p>
+      <p id="inv-stock-status" class="muted" style="margin:8px 0 0;"></p>
     </div>
     <div class="card" id="inv-scan-card" style="display:none;">
-      <h3 style="margin-top:0;">Escanear</h3>
-      <input type="text" id="inv-scan-input" placeholder="Código de barras + Enter" inputmode="none" autocomplete="off" style="font-size:18px;padding:12px;">
-      <button type="button" class="btn-secondary" id="inv-cam-btn" onclick="invCam()">Escanear con cámara</button>
-      <div id="inv-cam" style="display:none;width:100%;"></div>
+      <h2>Escanear</h2>
+      <input type="text" id="inv-scan-input" placeholder="Escribe o escanea el código" inputmode="none" autocomplete="off" style="margin-bottom:8px;">
+      <button type="button" class="btn-secondary" id="inv-cam-btn" onclick="invCam()" style="margin-bottom:8px;">Escanear con cámara</button>
+      <div id="inv-cam" style="display:none;width:100%;border-radius:10px;overflow:hidden;margin-bottom:8px;"></div>
       <div id="inv-fb"></div>
     </div>
     <div id="inv-body"></div>
@@ -558,7 +567,7 @@ function repairTruncatedCodes(){
     if(!target.location && p.location) target.location = p.location;
     if((!target.packSize || target.packSize === 1) && p.packSize > 1) target.packSize = p.packSize;
     delete productCatalog[code];
-    result.merged.push(code + ' ? ' + targetCode);
+    result.merged.push(code + ' → ' + targetCode);
   });
   if(result.merged.length){
     saveProductCatalog();
@@ -722,7 +731,7 @@ function renderBuildList(){
   const catalogLoaded = Object.keys(productCatalog).length > 0;
   const html = pickItems.map((item, idx) =>
     (catalogLoaded && item.code && !findCatalogCode(item.code)
-      ? '<div style="font-size:11px; color:var(--warning-text); background:var(--warning-bg); border:1px solid var(--warning-border); border-bottom:none; border-radius:8px 8px 0 0; padding:3px 8px; margin-bottom:-1px;">? «' + escapeAttr(item.code) + '» no está en el catálogo — revisa el código</div>'
+      ? '<div style="font-size:11px; color:var(--warning-text); background:var(--warning-bg); border:1px solid var(--warning-border); border-bottom:none; border-radius:8px 8px 0 0; padding:3px 8px; margin-bottom:-1px;">⚠ «' + escapeAttr(item.code) + '» no está en el catálogo — revisa el código</div>'
       : '')
     + '<div class="build-row">'
       + '<input class="f-code" data-idx="'+idx+'" data-field="code" value="'+escapeAttr(item.code)+'" placeholder="Código">'
@@ -1625,7 +1634,7 @@ document.getElementById('feedback-action').addEventListener('click', function(e)
       updateStats();
       const nBarcodes = ((productCatalog[targetCode] || {}).barcodes || []).length;
       setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + item.picked + '/' + item.qty + '). La próxima vez que escanees este código, ya lo va a reconocer solo.'
-        + (nBarcodes > 1 ? ' ? Ojo: este producto ahora tiene ' + nBarcodes + ' códigos de barras. Si no es correcto, quítalo en Catálogo.' : ''),
+        + (nBarcodes > 1 ? ' ⚠ Ojo: este producto ahora tiene ' + nBarcodes + ' códigos de barras. Si no es correcto, quítalo en Catálogo.' : ''),
         nBarcodes > 1 ? 'var(--warning-text)' : 'var(--success-text)');
     }
     return;
@@ -2017,7 +2026,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.4',
+    version: 'V2.6',
     exportedAt: Date.now(),
     inventario: { stock: invStock, activo: invAct, cerrados: invCer },
     productCatalog: productCatalog,
@@ -3214,39 +3223,39 @@ async function importCatalogFromExcel(file){
       + added + ' producto(s) nuevos, ' + updated + ' actualizados, ' + unchanged + ' sin cambios.';
     if(noCode) msg += ' ' + noCode + ' fila(s) sin código omitidas.';
     if(cols.barcode >= 0) msg += ' ' + barcodesLinked + ' código(s) de barras vinculados.';
-    if(ambiguousBarcodes.size) msg += ' ? ' + ambiguousBarcodes.size + ' código(s) de barras aparecen en más de un producto dentro del archivo y no se vincularon (serían ambiguos al escanear).';
+    if(ambiguousBarcodes.size) msg += ' ⚠ ' + ambiguousBarcodes.size + ' código(s) de barras aparecen en más de un producto dentro del archivo y no se vincularon (serían ambiguos al escanear).';
     if(repair.merged.length) msg += ' Se corrigieron ' + repair.merged.length + ' código(s) mal leídos por versiones anteriores (' + repair.merged.join(', ') + ').';
-    if(barcodeConflicts.length) msg += ' ? ' + barcodeConflicts.length + ' código(s) de barras ya estaban en otro producto y no se cambiaron: ' + barcodeConflicts.slice(0, 5).join('; ') + (barcodeConflicts.length > 5 ? '…' : '') + '.';
-    if(cols.name < 0) msg += ' ? No encontré la columna DESCRIPCION, así que no se crearon productos nuevos'
+    if(barcodeConflicts.length) msg += ' ⚠ ' + barcodeConflicts.length + ' código(s) de barras ya estaban en otro producto y no se cambiaron: ' + barcodeConflicts.slice(0, 5).join('; ') + (barcodeConflicts.length > 5 ? '…' : '') + '.';
+    if(cols.name < 0) msg += ' ⚠ No encontré la columna DESCRIPCION, así que no se crearon productos nuevos'
       + (skippedUnknown ? ' (' + skippedUnknown + ' código(s) del archivo no están en tu catálogo y se omitieron)' : '') + '.';
     status.textContent = msg;
 
     const NO_PHOTOS_HINT = ' Si lo abriste desde Google Drive, WhatsApp u otra app, descárgalo primero al celular y vuelve a importarlo desde la carpeta Descargas. Las fotos que ya tenías se conservaron.';
     if(photosChecked && !isXlsx){
-      status.textContent = msg + ' ? No se importaron fotos: este archivo no es un Excel .xlsx (puede ser .xls, .csv o una copia convertida).' + NO_PHOTOS_HINT;
+      status.textContent = msg + ' ⚠ No se importaron fotos: este archivo no es un Excel .xlsx (puede ser .xls, .csv o una copia convertida).' + NO_PHOTOS_HINT;
     }
 
     // Fotos
     if(wantPhotos){
       const btn = document.getElementById('btn-catalog-excel');
       btn.disabled = true;
-      status.textContent = msg + ' ?? Preparando fotos...';
+      status.textContent = msg + ' 📷 Preparando fotos...';
       try{
         const t0 = Date.now();
         const r = await importExcelImages(workbook, table, function(done, total){
-          status.textContent = msg + ' ?? Procesando fotos: ' + done + ' de ' + total + '... no cierres la app.';
+          status.textContent = msg + ' 📷 Procesando fotos: ' + done + ' de ' + total + '... no cierres la app.';
         });
         let photoMsg;
         if(r.noImagesInFile){
-          photoMsg = ' ? Este archivo no trae fotos.' + NO_PHOTOS_HINT;
+          photoMsg = ' ⚠ Este archivo no trae fotos.' + NO_PHOTOS_HINT;
         } else {
-          photoMsg = ' ?? ' + r.withPhoto + ' producto(s) con foto';
+          photoMsg = ' 📷 ' + r.withPhoto + ' producto(s) con foto';
           if(r.processed) photoMsg += ' (' + r.processed + ' foto(s) nuevas';
           if(r.reused) photoMsg += (r.processed ? ', ' : ' (') + r.reused + ' ya estaban';
           if(r.processed || r.reused) photoMsg += ')';
           photoMsg += ', ' + r.noPhoto + ' sin foto.';
           if(r.badCodes.length){
-            photoMsg += ' ? ' + r.badCodes.length + ' producto(s) tienen la foto dañada dentro del Excel o en un formato que el celular no puede mostrar (como EMF): '
+            photoMsg += ' ⚠ ' + r.badCodes.length + ' producto(s) tienen la foto dañada dentro del Excel o en un formato que el celular no puede mostrar (como EMF): '
               + r.badCodes.slice(0, 10).join(', ') + (r.badCodes.length > 10 ? '…' : '')
               + '. Para arreglarlo, borra esa imagen en el Excel y vuelve a pegarla.';
           }
@@ -3254,7 +3263,7 @@ async function importCatalogFromExcel(file){
         }
         msg += photoMsg;
       }catch(err){
-        msg += ' ? No se pudieron guardar las fotos: ' + (err.message || err) + '.';
+        msg += ' ⚠ No se pudieron guardar las fotos: ' + (err.message || err) + '.';
       }finally{
         btn.disabled = false;
       }
@@ -3330,14 +3339,14 @@ function renderCatalogBarcodeAlert(){
   const dbl = findDoubleBarcodes();
   const nShared = Object.keys(dbl.shared).length;
   const doubleBox = dbl.all.size
-    ? '<div style="background:var(--danger-bg); color:var(--danger-text); border:1px solid var(--danger-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">? <b>' + dbl.all.size + ' producto(s) con doble código de barras.</b> '
+    ? '<div style="background:var(--danger-bg); color:var(--danger-text); border:1px solid var(--danger-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">⚠ <b>' + dbl.all.size + ' producto(s) con doble código de barras.</b> '
       + (dbl.multi.size ? dbl.multi.size + ' tienen 2 o más códigos. ' : '')
       + (nShared ? nShared + ' comparten un código con otro producto. ' : '')
       + 'Toca «Doble código» y revisa que cada código sea de ese producto; quita con × el que esté mal. (A veces es correcto: algunas cajas traen dos códigos.)</div>'
     : '';
   const alertBox = sin > 0
-    ? '<div style="background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">? <b>' + sin + ' producto(s) sin código de barras.</b> Toca «Sin código de barras» para verlos y asignarles el código uno por uno.</div>'
-    : '<div style="background:var(--success-bg); color:var(--success-text); border:1px solid var(--success-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">? Todos los productos del catálogo tienen código de barras.</div>';
+    ? '<div style="background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">⚠ <b>' + sin + ' producto(s) sin código de barras.</b> Toca «Sin código de barras» para verlos y asignarles el código uno por uno.</div>'
+    : '<div style="background:var(--success-bg); color:var(--success-text); border:1px solid var(--success-border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px;">✓ Todos los productos del catálogo tienen código de barras.</div>';
   const chip = function(key, label, n){
     return '<button type="button" data-filter="' + key + '" class="toggle-btn' + (catalogBarcodeFilter === key ? ' active' : '') + '" style="flex:1; text-align:center; font-size:12px; padding:8px 4px; border:1px solid var(--border);">' + label + ' (' + n + ')</button>';
   };
@@ -3362,7 +3371,7 @@ function buildCatalogCard(code){
     });
   }
   const doubleWarn = (barcodes.length > 1 || sharedWith.length)
-    ? '<div style="font-size:12px; color:var(--danger-text); background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:8px; padding:6px 8px; margin-bottom:6px;">? '
+    ? '<div style="font-size:12px; color:var(--danger-text); background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:8px; padding:6px 8px; margin-bottom:6px;">⚠ '
       + (barcodes.length > 1 ? 'Tiene ' + barcodes.length + ' códigos de barras. Revisa que todos sean de este producto. ' : '')
       + (sharedWith.length ? escapeAttr(sharedWith.join('; ')) + '.' : '') + '</div>'
     : '';
@@ -3388,7 +3397,7 @@ function buildCatalogCard(code){
       + '<button type="button" data-action="cancel-confirm" style="flex:1;">Cancelar</button></div></div>';
   } else if(catalogUI.adding === code){
     actions = '<div style="margin-top:6px;">'
-      + '<button type="button" class="btn-primary" data-action="scan-barcode-camera" style="margin-bottom:8px;">?? Escanear con la cámara</button>'
+      + '<button type="button" class="btn-primary" data-action="scan-barcode-camera" style="margin-bottom:8px;">📷 Escanear con la cámara</button>'
       + '<label class="muted" style="display:block; margin-bottom:4px;">O usa el lector Bluetooth / escribe el código y presiona Enter</label>'
       + '<input type="text" id="catalog-barcode-input" autocomplete="off" placeholder="Código de barras" value="' + escapeAttr(catalogUI.value || '') + '" style="margin-bottom:6px;">'
       + (catalogUI.msg ? '<p style="font-size:12px; color:var(--danger-text); margin-bottom:6px;">' + escapeAttr(catalogUI.msg) + '</p>' : '')
@@ -3452,9 +3461,9 @@ function renderCatalogList(){
   if(filtered.length === 0){
     let msg = 'Todavía no hay productos en el catálogo. Se van agregando solos al subir cotizaciones, o puedes agregarlos a mano arriba.';
     if(codes.length > 0){
-      msg = catalogBarcodeFilter === 'sin' && !query ? 'No hay productos sin código de barras. ?'
+      msg = catalogBarcodeFilter === 'sin' && !query ? 'No hay productos sin código de barras. ✓'
           : catalogBarcodeFilter === 'con' && !query ? 'Todavía ningún producto tiene código de barras.'
-          : catalogBarcodeFilter === 'doble' && !query ? 'Ningún producto tiene doble código de barras. ?'
+          : catalogBarcodeFilter === 'doble' && !query ? 'Ningún producto tiene doble código de barras. ✓'
           : 'No se encontraron productos para esa búsqueda.';
     }
     container.innerHTML = '<p class="muted">' + msg + '</p>';
@@ -4003,9 +4012,11 @@ function invSearch(q){
 }
 function invChip(label, done, total, key){
   const q = key === '*P' ? 'Productos seleccionados' : key;
-  return '<div class="inv-chip"><b>' + escapeAttr(q) + '</b>: ' + done + (total != null ? ' de ' + total : '') +
-    '<div><button type="button" onclick="invFilter(\'' + escapeAttr(key) + '\')">Ver los que faltan</button> ' +
-    '<button type="button" onclick="invRemoveChip(\'' + escapeAttr(key) + '\')">×</button></div></div>';
+  const full = total != null && done >= total && total > 0;
+  return '<div class="inv-chip"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><b>' + escapeAttr(q) + '</b>' +
+    '<span class="badge ' + (full ? 'badge-success' : 'badge-warning') + '">' + done + (total != null ? ' de ' + total : '') + ' contados</span></div>' +
+    '<div class="inv-actions"><button type="button" class="' + (invUI.filter === key ? 'toggle-btn active' : '') + '" style="flex:1;" onclick="invFilter(\'' + escapeAttr(key) + '\')">' + (invUI.filter === key ? 'Ocultar los que faltan' : 'Ver los que faltan') + '</button>' +
+    '<button type="button" aria-label="Quitar del alcance" style="color:var(--danger-text);" onclick="invRemoveChip(\'' + escapeAttr(key) + '\')">Quitar</button></div></div>';
 }
 function invChipData(){
   const counts = invCounts(), sc = invStockCodes(), res = [];
@@ -4135,14 +4146,23 @@ function invNew(){
     stockDate: invStock ? invStock.fecha : null, worker: localStorage.getItem('rios_worker_name') || '', scope:{ brands:[], products:[] }, brands:{}, unknown:{} };
   invPersist(); invUI = { filter:null, more:30, pend:null, last:null, panel:null, msg:'', q:'' }; invRender();
 }
+// Código en letra de máquina + etiqueta de marca + paquete, igual que en Contabilización
+function invCodeLine(code){
+  const pk = getPackSize(code);
+  return '<div class="code">' + escapeAttr(code) + '<span class="brand-tag">' + escapeAttr(invBrand(code)) + '</span>' +
+    (pk > 1 ? ' <span class="badge badge-warning" style="margin-left:4px;">paq. ×' + pk + '</span>' : '') + '</div>';
+}
 function invLine(code, counts, showStock){
   const p = productCatalog[code] || {}, n = counts[code], ix = invIdx(invStock);
   let s = '';
-  if(showStock && ix){ const v = ix.get(code) || 0, col = n === v ? '#27500a' : (n < v ? '#633806' : '#791f1f'); s = '<div style="font-size:12px;color:' + col + ';">MIFACT: ' + invFmt(v) + ' · contado: ' + invFmt(n) + '</div>'; }
-  return '<div class="inv-row">' + thumbHtml(code, 40, false) + '<div style="flex:1;min-width:0;"><div style="font-size:12px;" class="muted">' + escapeAttr(code) + ' · ' + escapeAttr(invBrand(code)) + '</div>' +
-    '<div style="font-size:14px;">' + escapeAttr(p.name || '') + '</div>' + s + '</div>' +
-    '<div class="inv-qty"><button type="button" onclick="invAdj(\'' + escapeAttr(code) + '\',-' + getPackSize(code) + ')">−</button><b>' + invFmt(n) +
-    '</b><button type="button" onclick="invAdj(\'' + escapeAttr(code) + '\',' + getPackSize(code) + ')">+</button><button type="button" onclick="invEdit(\'' + escapeAttr(code) + '\')">✎</button></div></div>';
+  if(showStock && ix){ const v = ix.get(code) || 0, col = n === v ? 'var(--success-text)' : (n < v ? 'var(--warning-text)' : 'var(--danger-text)'); s = '<div style="font-size:12px;margin-top:2px;color:' + col + ';">MIFACT: ' + invFmt(v) + ' · contado: ' + invFmt(n) + '</div>'; }
+  const c = escapeAttr(code), pk = getPackSize(code);
+  return '<div class="inv-row">' + thumbHtml(code, 48, true, p.name) + '<div class="left">' + invCodeLine(code) +
+    '<div class="name">' + escapeAttr(p.name || '(sin nombre)') + '</div>' + s + '</div>' +
+    '<div class="inv-qty"><span class="count">' + invFmt(n) + '</span>' +
+    '<button type="button" class="minus-btn" aria-label="Quitar ' + pk + '" onclick="invAdj(\'' + c + '\',-' + pk + ')">-</button>' +
+    '<button type="button" class="minus-btn" aria-label="Sumar ' + pk + '" onclick="invAdj(\'' + c + '\',' + pk + ')">+</button>' +
+    '<button type="button" class="minus-btn" aria-label="Editar cantidad" onclick="invEdit(\'' + c + '\')">✎</button></div></div>';
 }
 function invRender(){
   if(!$i('page-inventario')) return;
@@ -4150,48 +4170,56 @@ function invRender(){
   let h = '<div class="muted" style="font-size:13px;">' + (invStock ? 'Stock MIFACT: <b>' + escapeAttr(invStock.archivo) + '</b> (' + Object.keys(invStock.items).length + ' códigos, corte ' + new Date(invStock.fecha).toLocaleString('es-PE') + ')' : 'Aún no hay stock de MIFACT cargado.') + '</div>';
   top.innerHTML = h;
   const body = $i('inv-body');
-  if(!invAct){ $i('inv-scan-card').style.display = 'none'; body.innerHTML = '<div class="card"><button type="button" class="btn-primary" onclick="invNew()">Iniciar inventario</button></div>' + invHistHtml(); return; }
+  if(!invAct){ $i('inv-scan-card').style.display = 'none'; body.innerHTML = '<div class="card"><h2>Nuevo inventario</h2><p class="muted">Carga primero el stock de MIFACT (arriba) para que el reporte compare lo contado contra el sistema.</p><button type="button" class="btn-primary" onclick="invNew()">Iniciar inventario</button></div>' + invHistHtml(); return; }
   const counts = invCounts(), codes = Object.keys(counts), units = codes.reduce((s, c) => s + counts[c], 0), chips = invChipData();
   const showStock = localStorage.getItem(INV_K.show) === '1';
-  let o = '<div class="card"><h2 style="margin-top:0;">' + escapeAttr(invAct.name) + '</h2>' +
-    '<div class="inv-sum"><div><b>' + codes.length + '</b><br>productos</div><div><b>' + invFmt(units) + '</b><br>unidades</div><div><b>' + chips.length + '</b><br>fichas</div><div><b>' + invUnlinkedCount() + '</b><br>sin vincular</div></div></div>';
-  o += '<div class="card"><h3 style="margin-top:0;">Alcance del conteo</h3>' +
+  let o = '<div class="muted" style="margin:-4px 2px 10px; font-size:12px; line-height:1.5;">Inventario <b style="color:var(--text);">' + escapeAttr(invAct.name) + '</b> · iniciado ' + new Date(invAct.createdAt).toLocaleString('es-PE') + (invAct.worker ? ' · ' + escapeAttr(invAct.worker) : '') + '</div>' +
+    '<div class="stat-grid">' +
+      '<div class="stat-box"><div class="num">' + codes.length + '</div><div class="lbl">Productos</div></div>' +
+      '<div class="stat-box"><div class="num">' + invFmt(units) + '</div><div class="lbl">Unidades</div></div>' +
+      '<div class="stat-box"><div class="num">' + chips.length + '</div><div class="lbl">Fichas</div></div>' +
+      '<div class="stat-box"><div class="num"' + (invUnlinkedCount() ? ' style="color:var(--danger-text);"' : '') + '>' + invUnlinkedCount() + '</div><div class="lbl">Sin vincular</div></div>' +
+    '</div>';
+  o += '<div class="card"><h2>Alcance del conteo</h2>' +
     (chips.length ? chips.map(c => invChip('', c.done, c.total, c.key)).join('') : '<div class="inv-warn">Sin alcance: lo que escanees se compara, pero lo no escaneado no se evaluará.</div>') +
-    '<button type="button" class="btn-secondary" onclick="invPanel(\'brand\')">+ Agregar marca completa</button> <button type="button" class="btn-secondary" style="margin-top:6px;" onclick="invPanel(\'prod\')">+ Agregar productos</button>' + invPanelHtml() + '</div>';
+    '<div style="display:flex;gap:6px;margin-top:8px;"><button type="button" class="toggle-btn' + (invUI.panel === 'brand' ? ' active' : '') + '" style="flex:1;border:1px solid var(--border);" onclick="invPanel(\'brand\')">+ Marca completa</button>' +
+    '<button type="button" class="toggle-btn' + (invUI.panel === 'prod' ? ' active' : '') + '" style="flex:1;border:1px solid var(--border);" onclick="invPanel(\'prod\')">+ Productos</button></div>' + invPanelHtml() + '</div>';
   if(invUI.filter){
     const c = chips.find(x => x.key === invUI.filter);
-    if(c) o += '<div class="card"><b>Faltan en ' + (c.key === '*P' ? 'Productos seleccionados' : c.key) + ' (' + c.pend.length + ')</b>' +
-      c.pend.slice(0, 60).map(k => '<div class="inv-row">' + thumbHtml(k, 36, false) + '<div style="font-size:13px;"><span class="muted">' + escapeAttr(k) + '</span><br>' + escapeAttr((productCatalog[k] || {}).name || '') + '</div></div>').join('') +
+    if(c) o += '<div class="card"><h2>Faltan en ' + escapeAttr(c.key === '*P' ? 'Productos seleccionados' : c.key) + ' · ' + c.pend.length + '</h2>' +
+      c.pend.slice(0, 60).map(k => '<div class="inv-row">' + thumbHtml(k, 40, true, (productCatalog[k] || {}).name) + '<div class="left">' + invCodeLine(k) + '<div class="name">' + escapeAttr((productCatalog[k] || {}).name || '') + '</div></div></div>').join('') +
       (c.pend.length > 60 ? '<div class="muted">… y ' + (c.pend.length - 60) + ' más</div>' : '') + '</div>';
   }
   let fb = '';
   if(invUI.msg) fb += '<div class="inv-info">' + escapeAttr(invUI.msg) + '</div>';
   if(invUI.last){
     const L = invUI.last, p = productCatalog[L.code] || {};
-    fb += '<div class="inv-info" style="display:flex;gap:8px;align-items:center;">' + thumbHtml(L.code, 56, false) + '<div><b>' + escapeAttr(invBrand(L.code)) + '</b> · ' + escapeAttr(p.name || L.code) +
-      '<br>+' + L.pack + (L.pack > 1 ? ' (paq. ×' + L.pack + ')' : '') + ' · total ' + invFmt(L.total) + '</div></div>';
+    fb += '<div class="inv-info" style="display:flex;gap:10px;align-items:center;">' + thumbHtml(L.code, 48, true, p.name) + '<div style="min-width:0;"><div class="muted" style="font-family:monospace;font-size:11px;">' + escapeAttr(L.code) + ' · ' + escapeAttr(invBrand(L.code)) + '</div>' +
+      '<div>' + escapeAttr(p.name || L.code) + '</div><b>+' + L.pack + (L.pack > 1 ? ' (paq. ×' + L.pack + ')' : '') + ' · total ' + invFmt(L.total) + '</b></div></div>';
     if(L.fuera) fb += '<div class="inv-warn">Este producto no está en el alcance.<br><button type="button" onclick="invAddProduct(\'' + escapeAttr(L.code) + '\');invUI.last.fuera=false;invRender();">Agregar este producto al alcance</button> ' +
       '<button type="button" onclick="invAddBrand(\'' + escapeAttr(invBrand(L.code)) + '\');invUI.last.fuera=false;">Agregar la marca ' + escapeAttr(invBrand(L.code)) + ' completa</button></div>';
   }
-  if(invUI.sel && productCatalog[invUI.sel]) fb = '<div class="inv-warn" style="display:flex;gap:8px;align-items:center;">' + thumbHtml(invUI.sel, 44, false) + '<div style="flex:1;font-size:13px;"><b>Producto elegido</b><br>' + escapeAttr(invUI.sel) + ' · ' + escapeAttr(productCatalog[invUI.sel].name || '') + '</div><button type="button" onclick="invSelect(\'' + escapeAttr(invUI.sel) + '\')">Quitar</button></div>' + fb;
+  if(invUI.sel && productCatalog[invUI.sel]) fb = '<div class="inv-warn" style="display:flex;gap:8px;align-items:center;">' + thumbHtml(invUI.sel, 44, true, productCatalog[invUI.sel].name) + '<div style="flex:1;font-size:13px;"><b>Producto elegido</b><br>' + escapeAttr(invUI.sel) + ' · ' + escapeAttr(productCatalog[invUI.sel].name || '') + '</div><button type="button" onclick="invSelect(\'' + escapeAttr(invUI.sel) + '\')">Quitar</button></div>' + fb;
   $i('inv-fb').innerHTML = fb;
   $i('inv-scan-card').style.display = '';
   $i('inv-cam-btn').textContent = invQr ? 'Apagar cámara' : 'Escanear con cámara';
   // Lista de productos a inventariar (con foto). Sin cantidades: el conteo sigue a ciegas.
   const tg = invTargets(), lt = invUI.lt || 'pend', lm = invUI.lmore || 30;
   const tgv = tg.filter(c => lt === 'todos' || (lt === 'pend' ? !counts[c] : !!counts[c]));
-  o += '<div class="card"><h3 style="margin-top:0;">Productos a inventariar · ' + tg.length + '</h3>' + (tg.length ? '<div class="muted" style="font-size:12px;margin-bottom:6px;">Toca un producto para elegirlo: si escaneas un código de barras que no está vinculado, te pregunta si es ese producto.</div>' : '') +
-    (tg.length ? '<div style="display:flex;gap:6px;margin-bottom:6px;">' + [['pend', 'Pendientes'], ['cont', 'Contados'], ['todos', 'Todos']].map(t => '<button type="button" class="btn-secondary" style="' + (lt === t[0] ? 'font-weight:700;border-color:var(--accent);' : '') + '" onclick="invUI.lt=\'' + t[0] + '\';invUI.lmore=30;invRender();">' + t[1] + '</button>').join('') + '</div>' +
-      tgv.slice(0, lm).map(c => '<div class="inv-row" style="cursor:pointer;' + (invUI.sel === c ? 'background:var(--success-bg);' : '') + '" onclick="invSelect(\'' + escapeAttr(c) + '\')">' + thumbHtml(c, 52, false) + '<div style="flex:1;min-width:0;font-size:13px;"><span class="muted">' + escapeAttr(c) + ' · ' + escapeAttr(invBrand(c)) + '</span><br>' + escapeAttr((productCatalog[c] || {}).name || '') + '</div><span style="font-size:12px;">' + (invUI.sel === c ? '● elegido' : (counts[c] ? '✓' : 'pendiente')) + '</span></div>').join('') +
+  o += '<div class="card"><h2>Productos a inventariar · ' + tg.length + '</h2>' + (tg.length ? '<div class="muted" style="font-size:12px;margin-bottom:8px;">Toca un producto para elegirlo: si escaneas un código de barras que no está vinculado, te pregunta si es ese producto.</div>' : '') +
+    (tg.length ? '<div style="display:flex;gap:6px;margin-bottom:8px;">' + [['pend', 'Pendientes'], ['cont', 'Contados'], ['todos', 'Todos']].map(t => '<button type="button" class="toggle-btn' + (lt === t[0] ? ' active' : '') + '" style="flex:1;text-align:center;border:1px solid var(--border);' + (lt === t[0] ? 'border-color:var(--accent);' : '') + '" onclick="invUI.lt=\'' + t[0] + '\';invUI.lmore=30;invRender();">' + t[1] + '</button>').join('') + '</div>' +
+      tgv.slice(0, lm).map(c => '<div class="inv-row' + (invUI.sel === c ? ' selected' : '') + '" style="cursor:pointer;" onclick="invSelect(\'' + escapeAttr(c) + '\')">' + thumbHtml(c, 48, false) + '<div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr((productCatalog[c] || {}).name || '') + '</div></div>' +
+        (invUI.sel === c ? '<span class="badge" style="background:var(--accent);color:#fff;">Elegido</span>' : (counts[c] ? '<span class="badge badge-success">✓ ' + invFmt(counts[c]) + '</span>' : '<span class="badge badge-warning">Pendiente</span>')) + '</div>').join('') +
       (tgv.length > lm ? '<button type="button" class="btn-secondary" onclick="invUI.lmore=' + (lm + 30) + ';invRender();">Ver más (' + (tgv.length - lm) + ')</button>' : (tgv.length ? '' : '<div class="muted">Nada en esta lista.</div>'))
       : '<div class="muted">Agrega una marca completa o productos al alcance y aquí aparece la lista con sus fotos.</div>') + '</div>';
   let list = codes;
   if(invUI.filter){ list = invUI.filter === '*P' ? codes.filter(c => invAct.scope.products.includes(c)) : codes.filter(c => invBrand(c) === invUI.filter); }
   list.sort((a, b) => Math.max(...Object.values(invAct.brands).map(B => B.ts[b] || 0)) - Math.max(...Object.values(invAct.brands).map(B => B.ts[a] || 0)));
-  o += '<div class="card"><label style="font-size:13px;"><input type="checkbox" ' + (showStock ? 'checked' : '') + ' onchange="localStorage.setItem(\'' + INV_K.show + '\',this.checked?\'1\':\'0\');invRender();"> Mostrar stock MIFACT (rompe el conteo a ciegas)</label>' +
-    '<h3>Contado' + (invUI.filter ? ' (filtrado)' : '') + ' · ' + list.length + '</h3>' + list.slice(0, invUI.more).map(c => invLine(c, counts, showStock)).join('') +
+  o += '<div class="card"><h2>Contado' + (invUI.filter ? ' (filtrado)' : '') + ' · ' + list.length + '</h2>' +
+    '<label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-bottom:8px;"><input type="checkbox" style="width:auto;" ' + (showStock ? 'checked' : '') + ' onchange="localStorage.setItem(\'' + INV_K.show + '\',this.checked?\'1\':\'0\');invRender();"> Mostrar stock MIFACT (rompe el conteo a ciegas)</label>' +
+    (list.length ? '' : '<p class="muted">Todavía no has escaneado nada.</p>') + list.slice(0, invUI.more).map(c => invLine(c, counts, showStock)).join('') +
     (list.length > invUI.more ? '<button type="button" class="btn-secondary" onclick="invUI.more+=30;invRender();">Ver más</button>' : '') + '</div>';
-  o += '<div class="card"><button type="button" class="btn-primary" onclick="invClose()">Cerrar inventario y generar reporte</button></div>' + invHistHtml();
+  o += invFormatsHtml() + invHistHtml();
   const pv = $i('inv-paste') ? $i('inv-paste').value : '';
   body.innerHTML = o;
   if(pv && $i('inv-paste')) $i('inv-paste').value = pv;
@@ -4222,8 +4250,11 @@ function invFocus(){
 })();
 function invHistHtml(){
   if(!invCer.length) return '';
-  return '<div class="card"><h3 style="margin-top:0;">Inventarios cerrados</h3>' + invCer.map((x, i) => '<div class="inv-row"><div style="flex:1;font-size:13px;"><b>' + escapeAttr(x.name) + '</b><br><span class="muted">' + new Date(x.closedAt).toLocaleString('es-PE') + '</span></div>' +
-    '<button type="button" onclick="invDownload(' + i + ')">Reporte de diferencias</button> <button type="button" onclick="invDownloadPlant(' + i + ')">Plantilla MIFACT</button> <button type="button" onclick="invDel(' + i + ')">Eliminar</button></div>').join('') + '</div>';
+  return '<h2 style="margin:18px 2px 10px;">Inventarios cerrados</h2>' + invCer.map((x, i) => '<div class="despacho-card"><div class="title">' + escapeAttr(x.name) + '</div>' +
+    '<div class="muted" style="font-size:12px;">Cerrado ' + new Date(x.closedAt).toLocaleString('es-PE') + ' · ' + Object.keys(invCounts(x)).length + ' producto(s) contados' + (x.worker ? ' · ' + escapeAttr(x.worker) : '') + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"><button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDownloadPlant(' + i + ')">Plantilla MIFACT</button>' +
+    '<button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDownload(' + i + ')">Reporte de diferencias</button>' +
+    '<button type="button" style="font-size:13px;padding:8px 10px;color:var(--danger-text);" onclick="invDel(' + i + ')">Eliminar</button></div></div>').join('');
 }
 function invDel(i){ if(!confirm('¿Eliminar este inventario cerrado? No se puede deshacer.')) return; invCer.splice(i, 1); invSave(INV_K.cer, invCer); invRender(); }
 function invPanel(k){ invUI.panel = invUI.panel === k ? null : k; invUI.q = ''; invUI.msg = ''; invUI.focusQ = !!invUI.panel; invRender(); }
@@ -4235,7 +4266,7 @@ function invPanelHtml(){
     const all = {}; Object.keys(productCatalog).forEach(c => { all[invBrand(c)] = 1; });
     const q = normHeader(invUI.q);
     return '<div style="margin-top:8px;"><input type="text" id="inv-q" placeholder="Buscar marca" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invUI.focusQ=true;invRender();">' +
-      '<div id="inv-brand-list">' + Object.keys(all).sort().filter(b => !q || b.includes(q)).map(b => '<button type="button" class="inv-brandbtn" onclick="invAddBrand(\'' + escapeAttr(b) + '\')">' + escapeAttr(b) + ' (' + (cnt[b] || 0) + ')</button>').join('') + '</div></div>';
+      '<div id="inv-brand-list" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px;">' + Object.keys(all).sort().filter(b => !q || b.includes(q)).map(b => '<button type="button" class="inv-brandbtn" onclick="invAddBrand(\'' + escapeAttr(b) + '\')">' + escapeAttr(b) + ' (' + (cnt[b] || 0) + ')</button>').join('') + '</div></div>';
   }
   if(p === 'prod'){
     const res = invSearch(invUI.q);
@@ -4361,16 +4392,51 @@ async function invEmit(inv, main, plantilla){
     setTimeout(() => downloadBlob(blob, 'inventario_' + nm + '_' + d + '.xlsx'), plantilla ? 1200 : 0);
   }
 }
+// ---- V2.5: formatos a descargar al cerrar ----
+// La elección se guarda dentro del inventario abierto (viaja en el respaldo). Inventarios de
+// versiones anteriores no la tienen: por defecto se descargan los dos, como antes.
+const INV_FORMATS = [
+  { key:'plant', label:'Plantilla de carga masiva MIFACT (.xlsx)', hint:'Se sube tal cual a MIFACT para actualizar el stock físico.' },
+  { key:'diff', label:'Reporte de diferencias (.xlsx)', hint:'Para revisar faltantes y sobrantes antes de subir la plantilla.' }
+];
+function invFormats(){
+  const f = (invAct && invAct.formats) || {};
+  return { plant: f.plant !== false, diff: f.diff !== false };
+}
+function invSetFormat(key, on){
+  if(!invAct) return;
+  invAct.formats = Object.assign(invFormats(), { [key]: !!on });
+  invPersist(); invRender();
+}
+function invFormatsHtml(){
+  const f = invFormats(), n = INV_FORMATS.filter(x => f[x.key]).length;
+  const rows = INV_FORMATS.map(x => '<label style="display:flex;gap:8px;align-items:flex-start;padding:4px 0 8px;font-size:13px;">' +
+    '<input type="checkbox" style="width:auto;margin-top:2px;" ' + (f[x.key] ? 'checked' : '') + ' onchange="invSetFormat(\'' + x.key + '\', this.checked)">' +
+    '<span><span style="font-weight:600;">' + x.label + '</span><br><span class="muted" style="font-size:12px;">' + x.hint + '</span></span></label>').join('');
+  let warn = '';
+  if(f.plant && !invStock) warn = '<div class="inv-warn">No hay stock de MIFACT cargado: la plantilla no se podrá generar. Carga el ReporteStockProduct arriba antes de cerrar.</div>';
+  if(!n) warn = '<div class="inv-warn">No elegiste ningún formato: se cerrará sin descargar nada. Podrás bajar los archivos después desde «Inventarios cerrados».</div>';
+  const btn = n ? 'Cerrar inventario y descargar ' + (n === 1 ? '1 archivo' : n + ' archivos') : 'Cerrar inventario sin descargar';
+  return '<div class="card"><h2>Archivos al cerrar</h2>' + rows + warn +
+    '<button type="button" class="btn-primary" style="margin-top:6px;" onclick="invClose()">' + btn + '</button></div>';
+}
 async function invClose(){
   invFlushPend();
-  const counts = invCounts(), pend = invChipData().reduce((s, c) => s + c.pend.length, 0);
-  if(!confirm('¿Cerrar el inventario "' + invAct.name + '"?\nProductos contados: ' + Object.keys(counts).length + '\nEn alcance sin contar: ' + pend + (invStock ? '' : '\nOJO: no hay stock de MIFACT cargado.'))) return;
+  const counts = invCounts(), pend = invChipData().reduce((s, c) => s + c.pend.length, 0), f = invFormats();
+  const chosen = INV_FORMATS.filter(x => f[x.key]).map(x => '• ' + x.label.replace(/ \(\.xlsx\)$/, ''));
+  if(!confirm('¿Cerrar el inventario "' + invAct.name + '"?\nProductos contados: ' + Object.keys(counts).length + '\nEn alcance sin contar: ' + pend + (invStock ? '' : '\nOJO: no hay stock de MIFACT cargado.') +
+    '\n\nSe descargará:\n' + (chosen.length ? chosen.join('\n') : '(nada — podrás bajarlos después desde Inventarios cerrados)'))) return;
   const inv = JSON.parse(JSON.stringify(invAct)); inv.closedAt = Date.now();
   inv.stockSnapshot = invStock ? { fecha:invStock.fecha, archivo:invStock.archivo, items:invStock.items, desc:invStock.desc || {}, cat:invStock.cat || {}, order:invStock.order || Object.keys(invStock.items) } : null;
   const ok = invSave(INV_K.cer, [inv].concat(invCer));
   if(ok){ invCer = [inv].concat(invCer); invAct = null; invSave(INV_K.act, null); }
   else alert('No se pudo guardar el cierre. El inventario sigue abierto; el reporte se descarga igual.');
-  await invEmit(inv); invUI.msg = 'Inventario cerrado. Se descargó la plantilla de MIFACT lista para la carga masiva y el reporte de diferencias. Si el celular bloqueó alguna, bájala desde Inventarios cerrados.'; invRender();
+  if(f.plant || f.diff) await invEmit(inv, f.diff, f.plant);
+  const got = [];
+  if(f.plant && inv.stockSnapshot) got.push('la plantilla de MIFACT lista para la carga masiva');
+  if(f.diff) got.push('el reporte de diferencias');
+  invUI.msg = 'Inventario cerrado. ' + (got.length ? 'Se descargó ' + got.join(' y ') + '. Si el celular bloqueó alguna descarga, bájala desde Inventarios cerrados.' : 'No se descargó ningún archivo; puedes bajarlos desde Inventarios cerrados.');
+  invRender();
 }
 // ---- Respaldo: fusionar sin pisar ----
 function invMerge(inc){
