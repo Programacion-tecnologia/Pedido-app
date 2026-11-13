@@ -290,7 +290,13 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
         <input type="file" id="inv-stock-file" accept=".xlsx,.xls,.csv" style="display:none;"></label>
       <p id="inv-stock-status" class="muted" style="font-size:13px;"></p>
     </div>
-    <div id="inv-cam" style="display:none;width:100%;"></div>
+    <div class="card" id="inv-scan-card" style="display:none;">
+      <h3 style="margin-top:0;">Escanear</h3>
+      <input type="text" id="inv-scan-input" placeholder="Código de barras + Enter" inputmode="none" autocomplete="off" style="font-size:18px;padding:12px;">
+      <button type="button" class="btn-secondary" id="inv-cam-btn" onclick="invCam()">Escanear con cámara</button>
+      <div id="inv-cam" style="display:none;width:100%;"></div>
+      <div id="inv-fb"></div>
+    </div>
     <div id="inv-body"></div>
   </div>
 
@@ -4129,7 +4135,7 @@ function invRender(){
   let h = '<div class="muted" style="font-size:13px;">' + (invStock ? 'Stock MIFACT: <b>' + escapeAttr(invStock.archivo) + '</b> (' + Object.keys(invStock.items).length + ' códigos, corte ' + new Date(invStock.fecha).toLocaleString('es-PE') + ')' : 'Aún no hay stock de MIFACT cargado.') + '</div>';
   top.innerHTML = h;
   const body = $i('inv-body');
-  if(!invAct){ body.innerHTML = '<div class="card"><button type="button" class="btn-primary" onclick="invNew()">Iniciar inventario</button></div>' + invHistHtml(); return; }
+  if(!invAct){ $i('inv-scan-card').style.display = 'none'; body.innerHTML = '<div class="card"><button type="button" class="btn-primary" onclick="invNew()">Iniciar inventario</button></div>' + invHistHtml(); return; }
   const counts = invCounts(), codes = Object.keys(counts), units = codes.reduce((s, c) => s + counts[c], 0), chips = invChipData();
   const showStock = localStorage.getItem(INV_K.show) === '1';
   let o = '<div class="card"><h2 style="margin-top:0;">' + escapeAttr(invAct.name) + '</h2>' +
@@ -4143,17 +4149,26 @@ function invRender(){
       c.pend.slice(0, 60).map(k => '<div class="inv-row">' + thumbHtml(k, 36, false) + '<div style="font-size:13px;"><span class="muted">' + escapeAttr(k) + '</span><br>' + escapeAttr((productCatalog[k] || {}).name || '') + '</div></div>').join('') +
       (c.pend.length > 60 ? '<div class="muted">… y ' + (c.pend.length - 60) + ' más</div>' : '') + '</div>';
   }
-  o += '<div class="card"><h3 style="margin-top:0;">Escanear</h3><input type="text" id="inv-scan-input" placeholder="Código de barras + Enter" inputmode="none" autocomplete="off">' +
-    '<button type="button" class="btn-secondary" onclick="invCam()">' + (invQr ? 'Apagar cámara' : 'Escanear con cámara') + '</button>';
-  if(invUI.msg) o += '<div class="inv-info">' + escapeAttr(invUI.msg) + '</div>';
+  let fb = '';
+  if(invUI.msg) fb += '<div class="inv-info">' + escapeAttr(invUI.msg) + '</div>';
   if(invUI.last){
     const L = invUI.last, p = productCatalog[L.code] || {};
-    o += '<div class="inv-info" style="display:flex;gap:8px;align-items:center;">' + thumbHtml(L.code, 48, false) + '<div><b>' + escapeAttr(invBrand(L.code)) + '</b> · ' + escapeAttr(p.name || L.code) +
+    fb += '<div class="inv-info" style="display:flex;gap:8px;align-items:center;">' + thumbHtml(L.code, 56, false) + '<div><b>' + escapeAttr(invBrand(L.code)) + '</b> · ' + escapeAttr(p.name || L.code) +
       '<br>+' + L.pack + (L.pack > 1 ? ' (paq. ×' + L.pack + ')' : '') + ' · total ' + invFmt(L.total) + '</div></div>';
-    if(L.fuera) o += '<div class="inv-warn">Este producto no está en el alcance.<br><button type="button" onclick="invAddProduct(\'' + escapeAttr(L.code) + '\');invUI.last.fuera=false;invRender();">Agregar este producto al alcance</button> ' +
+    if(L.fuera) fb += '<div class="inv-warn">Este producto no está en el alcance.<br><button type="button" onclick="invAddProduct(\'' + escapeAttr(L.code) + '\');invUI.last.fuera=false;invRender();">Agregar este producto al alcance</button> ' +
       '<button type="button" onclick="invAddBrand(\'' + escapeAttr(invBrand(L.code)) + '\');invUI.last.fuera=false;">Agregar la marca ' + escapeAttr(invBrand(L.code)) + ' completa</button></div>';
   }
-  o += '</div>';
+  $i('inv-fb').innerHTML = fb;
+  $i('inv-scan-card').style.display = '';
+  $i('inv-cam-btn').textContent = invQr ? 'Apagar cámara' : 'Escanear con cámara';
+  // Lista de productos a inventariar (con foto). Sin cantidades: el conteo sigue a ciegas.
+  const tg = invTargets(), lt = invUI.lt || 'pend', lm = invUI.lmore || 30;
+  const tgv = tg.filter(c => lt === 'todos' || (lt === 'pend' ? !counts[c] : !!counts[c]));
+  o += '<div class="card"><h3 style="margin-top:0;">Productos a inventariar · ' + tg.length + '</h3>' +
+    (tg.length ? '<div style="display:flex;gap:6px;margin-bottom:6px;">' + [['pend', 'Pendientes'], ['cont', 'Contados'], ['todos', 'Todos']].map(t => '<button type="button" class="btn-secondary" style="' + (lt === t[0] ? 'font-weight:700;border-color:var(--accent);' : '') + '" onclick="invUI.lt=\'' + t[0] + '\';invUI.lmore=30;invRender();">' + t[1] + '</button>').join('') + '</div>' +
+      tgv.slice(0, lm).map(c => '<div class="inv-row">' + thumbHtml(c, 52, false) + '<div style="flex:1;min-width:0;font-size:13px;"><span class="muted">' + escapeAttr(c) + ' · ' + escapeAttr(invBrand(c)) + '</span><br>' + escapeAttr((productCatalog[c] || {}).name || '') + '</div><span style="font-size:12px;">' + (counts[c] ? '✓' : 'pendiente') + '</span></div>').join('') +
+      (tgv.length > lm ? '<button type="button" class="btn-secondary" onclick="invUI.lmore=' + (lm + 30) + ';invRender();">Ver más (' + (tgv.length - lm) + ')</button>' : (tgv.length ? '' : '<div class="muted">Nada en esta lista.</div>'))
+      : '<div class="muted">Agrega una marca completa o productos al alcance y aquí aparece la lista con sus fotos.</div>') + '</div>';
   let list = codes;
   if(invUI.filter){ list = invUI.filter === '*P' ? codes.filter(c => invAct.scope.products.includes(c)) : codes.filter(c => invBrand(c) === invUI.filter); }
   list.sort((a, b) => Math.max(...Object.values(invAct.brands).map(B => B.ts[b] || 0)) - Math.max(...Object.values(invAct.brands).map(B => B.ts[a] || 0)));
@@ -4161,15 +4176,31 @@ function invRender(){
     '<h3>Contado' + (invUI.filter ? ' (filtrado)' : '') + ' · ' + list.length + '</h3>' + list.slice(0, invUI.more).map(c => invLine(c, counts, showStock)).join('') +
     (list.length > invUI.more ? '<button type="button" class="btn-secondary" onclick="invUI.more+=30;invRender();">Ver más</button>' : '') + '</div>';
   o += '<div class="card"><button type="button" class="btn-primary" onclick="invClose()">Cerrar inventario y generar reporte</button></div>' + invHistHtml();
-  const keep = $i('inv-scan-input') ? $i('inv-scan-input').value : '';
   body.innerHTML = o;
-  const inp = $i('inv-scan-input');
-  if(inp){
-    inp.value = keep;
-    inp.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); const v = inp.value; inp.value = ''; invScan(v); } });
-    if(!invUI.panel) inp.focus({ preventScroll:true });
-  }
+  try{ hydrateThumbs($i('inv-body')); hydrateThumbs($i('inv-fb')); }catch(e){}
+  invFocus();
 }
+function invTargets(){
+  const set = new Set(), sc = invStockCodes();
+  invAct.scope.brands.forEach(b => {
+    if(invStock) Object.keys(sc).forEach(c => { if(sc[c] === b) set.add(c); });
+    else Object.keys(productCatalog).forEach(c => { if(invBrand(c) === b) set.add(c); });
+  });
+  invAct.scope.products.forEach(c => set.add(c));
+  return Array.from(set).sort((x, y) => String(x).localeCompare(String(y), 'es', { numeric:true }));
+}
+// El campo de escaneo vive fuera de lo que se redibuja y siempre recupera el foco (lector Bluetooth = teclado + Enter)
+function invFocus(){
+  const i = $i('inv-scan-input'), pg = $i('page-inventario');
+  if(!i || !invAct || pg.classList.contains('hidden') || invUI.panel) return;
+  if(document.activeElement !== i) i.focus({ preventScroll:true });
+}
+(function(){
+  const i = $i('inv-scan-input');
+  i.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); const v = i.value; i.value = ''; invScan(v); } });
+  i.addEventListener('blur', () => setTimeout(() => { const a = document.activeElement; if(!a || a === document.body || a.tagName === 'BUTTON' || a.tagName === 'LABEL') invFocus(); }, 60));
+  $i('page-inventario').addEventListener('click', e => { if(!/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(invFocus, 80); });
+})();
 function invHistHtml(){
   if(!invCer.length) return '';
   return '<div class="card"><h3 style="margin-top:0;">Inventarios cerrados</h3>' + invCer.map((x, i) => '<div class="inv-row"><div style="flex:1;font-size:13px;"><b>' + escapeAttr(x.name) + '</b><br><span class="muted">' + new Date(x.closedAt).toLocaleString('es-PE') + '</span></div>' +
@@ -4287,19 +4318,22 @@ async function invEmit(inv, main, plantilla){
   if(main === undefined){ main = true; plantilla = true; }
   const rep = invBuildReport(inv), d = new Date(inv.closedAt || Date.now()).toISOString().slice(0, 10);
   const nm = String(inv.name).replace(/[^\w\-]+/g, '_'), XT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  // 1) La plantilla de MIFACT va PRIMERO y sin esperas: es la que se sube tal cual a la carga masiva
+  if(plantilla){
+    if(!rep.plant.length){ alert('No hay stock de MIFACT guardado en este inventario: no se puede armar la plantilla.'); }
+    else {
+      const ws = XLSX.utils.aoa_to_sheet([['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL']].concat(rep.plant));
+      ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lista de productos');
+      downloadBlob(new Blob([XLSX.write(wb, { bookType:'xlsx', type:'array' })], { type:XT }), 'PLANTILLA_PRODUCTOS_MIFACT_10702389190_' + d + '.xlsx');
+    }
+  }
+  // 2) Reporte de diferencias (para revisar antes de subir)
   if(main){
     let blob;
     try{ await ensureExcelJS(); blob = new Blob([await buildStyledWorkbook({ sheets:rep.sheets })], { type:XT }); }
     catch(e){ blob = buildPlainWorkbookBlob({ sheets:rep.sheets }); }
-    downloadBlob(blob, 'inventario_' + nm + '_' + d + '.xlsx');
-  }
-  if(plantilla){
-    if(!rep.plant.length){ alert('No hay stock de MIFACT guardado en este inventario: no se puede armar la plantilla.'); return; }
-    const ws = XLSX.utils.aoa_to_sheet([['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL']].concat(rep.plant));
-    ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lista de productos');
-    const out = new Blob([XLSX.write(wb, { bookType:'xlsx', type:'array' })], { type:XT });
-    setTimeout(() => downloadBlob(out, 'PLANTILLA_PRODUCTOS_MIFACT_10702389190_' + d + '.xlsx'), main ? 700 : 0);
+    setTimeout(() => downloadBlob(blob, 'inventario_' + nm + '_' + d + '.xlsx'), plantilla ? 1200 : 0);
   }
 }
 async function invClose(){
@@ -4311,7 +4345,7 @@ async function invClose(){
   const ok = invSave(INV_K.cer, [inv].concat(invCer));
   if(ok){ invCer = [inv].concat(invCer); invAct = null; invSave(INV_K.act, null); }
   else alert('No se pudo guardar el cierre. El inventario sigue abierto; el reporte se descarga igual.');
-  await invEmit(inv); invRender();
+  await invEmit(inv); invUI.msg = 'Inventario cerrado. Se descargó la plantilla de MIFACT lista para la carga masiva y el reporte de diferencias. Si el celular bloqueó alguna, bájala desde Inventarios cerrados.'; invRender();
 }
 // ---- Respaldo: fusionar sin pisar ----
 function invMerge(inc){
