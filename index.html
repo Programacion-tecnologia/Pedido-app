@@ -4059,9 +4059,23 @@ function invAdd(code, n){
   if(v === 0){ delete B.items[code]; delete B.ts[code]; } else { B.items[code] = v; B.ts[code] = Date.now(); }
   B.updatedAt = Date.now(); invPersist();
 }
+function invSelect(code){ invUI.sel = (invUI.sel === code) ? null : code; invRender(); }
 function invScan(raw){
   raw = String(raw || '').trim(); if(!raw || !invAct) return;
   const code = barcodeIndex[raw] || findCatalogCode(raw);
+  // Hay un producto elegido de la lista y el código de barras no está vinculado: se vincula, pidiendo confirmación
+  if(!code && invUI.sel && productCatalog[invUI.sel]){
+    const sc = invUI.sel, p = productCatalog[sc];
+    if(confirm('El código de barras "' + raw + '" no está vinculado a ningún producto.\n\n¿Es este producto?\n' + sc + ' · ' + (p.name || '') + '\n\nSi aceptas, se vincula y se cuenta.')){
+      invFlushPend();
+      const pack = getPackSize(sc);
+      linkBarcodeToProduct(raw, sc); invAdd(sc, pack);
+      const nb = (p.barcodes || []).length;
+      invUI.last = { code:sc, pack, total: invCounts()[sc] || 0, fuera: invAct.scope.brands.length + invAct.scope.products.length > 0 && !invCovered(sc) };
+      invMsg('Código vinculado y contado.' + (nb >= 2 ? ' Ojo: este producto ahora tiene ' + nb + ' códigos de barras.' : ''));
+      invRender(); return;
+    }
+  }
   if(!code){
     if(invUI.pend && invUI.pend.barcode === raw) invUI.pend.n++;
     else { invFlushPend(); invUI.pend = { barcode:raw, n:1 }; }
@@ -4078,6 +4092,7 @@ function invScan(raw){
 function invMsg(m){ invUI.msg = m; clearTimeout(invMsgT); if(m) invMsgT = setTimeout(() => { invUI.msg = ''; invRender(); }, 4000); }
 function invLink(code){
   const p = invUI.pend; if(!p) return;
+  if(!confirm('¿Vincular el código "' + p.barcode + '" con este producto?\n' + code + ' · ' + ((productCatalog[code] || {}).name || ''))) return;
   const pack = getPackSize(code);
   linkBarcodeToProduct(p.barcode, code);
   invAdd(code, p.n * pack);
@@ -4158,15 +4173,16 @@ function invRender(){
     if(L.fuera) fb += '<div class="inv-warn">Este producto no está en el alcance.<br><button type="button" onclick="invAddProduct(\'' + escapeAttr(L.code) + '\');invUI.last.fuera=false;invRender();">Agregar este producto al alcance</button> ' +
       '<button type="button" onclick="invAddBrand(\'' + escapeAttr(invBrand(L.code)) + '\');invUI.last.fuera=false;">Agregar la marca ' + escapeAttr(invBrand(L.code)) + ' completa</button></div>';
   }
+  if(invUI.sel && productCatalog[invUI.sel]) fb = '<div class="inv-warn" style="display:flex;gap:8px;align-items:center;">' + thumbHtml(invUI.sel, 44, false) + '<div style="flex:1;font-size:13px;"><b>Producto elegido</b><br>' + escapeAttr(invUI.sel) + ' · ' + escapeAttr(productCatalog[invUI.sel].name || '') + '</div><button type="button" onclick="invSelect(\'' + escapeAttr(invUI.sel) + '\')">Quitar</button></div>' + fb;
   $i('inv-fb').innerHTML = fb;
   $i('inv-scan-card').style.display = '';
   $i('inv-cam-btn').textContent = invQr ? 'Apagar cámara' : 'Escanear con cámara';
   // Lista de productos a inventariar (con foto). Sin cantidades: el conteo sigue a ciegas.
   const tg = invTargets(), lt = invUI.lt || 'pend', lm = invUI.lmore || 30;
   const tgv = tg.filter(c => lt === 'todos' || (lt === 'pend' ? !counts[c] : !!counts[c]));
-  o += '<div class="card"><h3 style="margin-top:0;">Productos a inventariar · ' + tg.length + '</h3>' +
+  o += '<div class="card"><h3 style="margin-top:0;">Productos a inventariar · ' + tg.length + '</h3>' + (tg.length ? '<div class="muted" style="font-size:12px;margin-bottom:6px;">Toca un producto para elegirlo: si escaneas un código de barras que no está vinculado, te pregunta si es ese producto.</div>' : '') +
     (tg.length ? '<div style="display:flex;gap:6px;margin-bottom:6px;">' + [['pend', 'Pendientes'], ['cont', 'Contados'], ['todos', 'Todos']].map(t => '<button type="button" class="btn-secondary" style="' + (lt === t[0] ? 'font-weight:700;border-color:var(--accent);' : '') + '" onclick="invUI.lt=\'' + t[0] + '\';invUI.lmore=30;invRender();">' + t[1] + '</button>').join('') + '</div>' +
-      tgv.slice(0, lm).map(c => '<div class="inv-row">' + thumbHtml(c, 52, false) + '<div style="flex:1;min-width:0;font-size:13px;"><span class="muted">' + escapeAttr(c) + ' · ' + escapeAttr(invBrand(c)) + '</span><br>' + escapeAttr((productCatalog[c] || {}).name || '') + '</div><span style="font-size:12px;">' + (counts[c] ? '✓' : 'pendiente') + '</span></div>').join('') +
+      tgv.slice(0, lm).map(c => '<div class="inv-row" style="cursor:pointer;' + (invUI.sel === c ? 'background:var(--success-bg);' : '') + '" onclick="invSelect(\'' + escapeAttr(c) + '\')">' + thumbHtml(c, 52, false) + '<div style="flex:1;min-width:0;font-size:13px;"><span class="muted">' + escapeAttr(c) + ' · ' + escapeAttr(invBrand(c)) + '</span><br>' + escapeAttr((productCatalog[c] || {}).name || '') + '</div><span style="font-size:12px;">' + (invUI.sel === c ? '● elegido' : (counts[c] ? '✓' : 'pendiente')) + '</span></div>').join('') +
       (tgv.length > lm ? '<button type="button" class="btn-secondary" onclick="invUI.lmore=' + (lm + 30) + ';invRender();">Ver más (' + (tgv.length - lm) + ')</button>' : (tgv.length ? '' : '<div class="muted">Nada en esta lista.</div>'))
       : '<div class="muted">Agrega una marca completa o productos al alcance y aquí aparece la lista con sus fotos.</div>') + '</div>';
   let list = codes;
@@ -4176,7 +4192,10 @@ function invRender(){
     '<h3>Contado' + (invUI.filter ? ' (filtrado)' : '') + ' · ' + list.length + '</h3>' + list.slice(0, invUI.more).map(c => invLine(c, counts, showStock)).join('') +
     (list.length > invUI.more ? '<button type="button" class="btn-secondary" onclick="invUI.more+=30;invRender();">Ver más</button>' : '') + '</div>';
   o += '<div class="card"><button type="button" class="btn-primary" onclick="invClose()">Cerrar inventario y generar reporte</button></div>' + invHistHtml();
+  const pv = $i('inv-paste') ? $i('inv-paste').value : '';
   body.innerHTML = o;
+  if(pv && $i('inv-paste')) $i('inv-paste').value = pv;
+  if(invUI.focusQ){ invUI.focusQ = false; const q = $i('inv-q'); if(q){ q.focus(); const n = q.value.length; try{ q.setSelectionRange(n, n); }catch(e){} } }
   try{ hydrateThumbs($i('inv-body')); hydrateThumbs($i('inv-fb')); }catch(e){}
   invFocus();
 }
@@ -4192,7 +4211,7 @@ function invTargets(){
 // El campo de escaneo vive fuera de lo que se redibuja y siempre recupera el foco (lector Bluetooth = teclado + Enter)
 function invFocus(){
   const i = $i('inv-scan-input'), pg = $i('page-inventario');
-  if(!i || !invAct || pg.classList.contains('hidden') || invUI.panel) return;
+  if(!i || !invAct || pg.classList.contains('hidden') || (invUI.panel && invUI.panel !== 'link')) return;
   if(document.activeElement !== i) i.focus({ preventScroll:true });
 }
 (function(){
@@ -4207,7 +4226,7 @@ function invHistHtml(){
     '<button type="button" onclick="invDownload(' + i + ')">Reporte de diferencias</button> <button type="button" onclick="invDownloadPlant(' + i + ')">Plantilla MIFACT</button> <button type="button" onclick="invDel(' + i + ')">Eliminar</button></div>').join('') + '</div>';
 }
 function invDel(i){ if(!confirm('¿Eliminar este inventario cerrado? No se puede deshacer.')) return; invCer.splice(i, 1); invSave(INV_K.cer, invCer); invRender(); }
-function invPanel(k){ invUI.panel = invUI.panel === k ? null : k; invUI.q = ''; invUI.msg = ''; invRender(); }
+function invPanel(k){ invUI.panel = invUI.panel === k ? null : k; invUI.q = ''; invUI.msg = ''; invUI.focusQ = !!invUI.panel; invRender(); }
 function invPanelHtml(){
   const p = invUI.panel; if(!p) return '';
   if(p === 'brand'){
@@ -4215,12 +4234,12 @@ function invPanelHtml(){
     Object.keys(sc).forEach(c => { cnt[sc[c]] = (cnt[sc[c]] || 0) + 1; });
     const all = {}; Object.keys(productCatalog).forEach(c => { all[invBrand(c)] = 1; });
     const q = normHeader(invUI.q);
-    return '<div style="margin-top:8px;"><input type="text" placeholder="Buscar marca" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invBrandFilter()">' +
+    return '<div style="margin-top:8px;"><input type="text" id="inv-q" placeholder="Buscar marca" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invUI.focusQ=true;invRender();">' +
       '<div id="inv-brand-list">' + Object.keys(all).sort().filter(b => !q || b.includes(q)).map(b => '<button type="button" class="inv-brandbtn" onclick="invAddBrand(\'' + escapeAttr(b) + '\')">' + escapeAttr(b) + ' (' + (cnt[b] || 0) + ')</button>').join('') + '</div></div>';
   }
   if(p === 'prod'){
     const res = invSearch(invUI.q);
-    return '<div style="margin-top:8px;"><input type="text" placeholder="Buscar código, nombre, marca o modelo" value="' + escapeAttr(invUI.q) + '" onchange="invUI.q=this.value;invRender();">' +
+    return '<div style="margin-top:8px;"><input type="text" id="inv-q" placeholder="Buscar código, nombre, marca o modelo" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invUI.focusQ=true;clearTimeout(invUI.qt);invUI.qt=setTimeout(invRender,350);">' +
       res.map(c => '<div class="inv-row"><div style="flex:1;font-size:13px;">' + escapeAttr(c) + '<br>' + escapeAttr(productCatalog[c].name || '') + (invCovered(c) ? '<br><i>cubierto</i>' : '') + '</div><button type="button" onclick="invAddProduct(\'' + escapeAttr(c) + '\');invRender();">Agregar</button></div>').join('') +
       '<textarea id="inv-paste" rows="4" placeholder="Pegar lista de códigos (uno por línea)" style="width:100%;margin-top:6px;"></textarea><button type="button" class="btn-secondary" onclick="invPasteList()">Agregar lista</button>' +
       (invUI.msg ? '<div class="inv-info">' + escapeAttr(invUI.msg) + '</div>' : '') + '</div>';
