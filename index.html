@@ -114,6 +114,17 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 .inv-danger{ background:var(--danger-text) !important; color:#fff !important; border-color:var(--danger-text) !important; }
 .inv-edit{ border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin:-2px 0 6px; background:var(--card); }
 .desk-brand{ display:none; }
+/* V2.8: marcas por revisar y botón Teclado */
+.inv-rev-row{ border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:6px; background:var(--card); font-size:13px; }
+.inv-rev-row .code{ font-family:monospace; font-size:11px; color:var(--text-secondary); }
+.inv-rev-row .why{ font-size:12px; color:var(--text-secondary); margin-top:2px; }
+.inv-rev-row .inv-actions{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.inv-rev-row select{ flex:1; min-width:140px; font-size:13px; padding:7px 8px; }
+.inv-rev-row button{ font-size:13px; padding:7px 10px; }
+.inv-warn .inv-actions{ display:flex; gap:6px; margin-top:8px; }
+.inv-skip{ display:flex; gap:8px; align-items:flex-start; padding:6px 0; border-top:1px solid var(--warning-border); font-size:13px; }
+#inv-scan-input{ flex:1; min-width:0; }
+#inv-kbd-btn{ flex-shrink:0; width:auto; font-size:13px; padding:9px 12px; }
 
 /* V2.7: vista de PC (pantallas de 1100px o más). En el celular no se aplica nada de esto. */
 @media (min-width:1100px){
@@ -148,6 +159,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
   #despachos-list > p, #recepciones-list > p{ grid-column:1 / -1; }
   #page-despachos > input, #page-recepciones > input, #page-despachos > button, #page-recepciones > button{ max-width:560px; }
   #page-inicio, #page-metricas{ max-width:980px; }
+  #inv-kbd-btn{ display:none; } /* V2.8: en la PC se usa el lector USB */
 }
 </style>
 </head>
@@ -169,7 +181,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.7</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.8</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -343,7 +355,10 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
     </div>
     <div class="card" id="inv-scan-card" style="display:none;">
       <h2>Escanear</h2>
-      <input type="text" id="inv-scan-input" placeholder="Escribe o escanea el código" inputmode="none" autocomplete="off" style="margin-bottom:8px;">
+      <div class="row-flex" style="margin-bottom:8px;">
+        <input type="text" id="inv-scan-input" placeholder="Escribe o escanea el código" inputmode="none" autocomplete="off">
+        <button type="button" id="inv-kbd-btn" class="toggle-btn" onclick="invKeyboard()">Teclado</button>
+      </div>
       <button type="button" class="btn-secondary" id="inv-cam-btn" onclick="invCam()" style="margin-bottom:8px;">Escanear con cámara</button>
       <div id="inv-cam" style="display:none;width:100%;border-radius:10px;overflow:hidden;margin-bottom:8px;"></div>
       <div id="inv-fb"></div>
@@ -561,9 +576,10 @@ try{
 // ("api-roj-honda" = "API-ROJ-Honda", "CP331BCM _ CAL261BC40" = "CP331BCM_CAL261BC40").
 let catalogNormIndex = null;
 let catalogCompactIndex = null;
+let invBrandCache = null; // V2.8: marcas resueltas del Inventario (se recalcula si cambia el catálogo o el stock)
 function normCode(c){ return String(c == null ? '' : c).toUpperCase().replace(/\s+/g, ' ').trim(); }
 function compactCode(c){ return normCode(c).replace(/\s+/g, ''); }
-function invalidateCatalogIndex(){ catalogNormIndex = null; catalogCompactIndex = null; }
+function invalidateCatalogIndex(){ catalogNormIndex = null; catalogCompactIndex = null; invBrandCache = null; }
 function findCatalogCode(code){
   if(!code) return null;
   if(productCatalog[code]) return code;
@@ -1651,7 +1667,7 @@ function handleScan(raw){
   const itemLabel = (scanBrand ? '[' + scanBrand + '] ' : '') + item.name;
   item.picked += step;
   if(item.picked > item.qty){
-    setFeedback('Exceso: ' + itemLabel + stepTxt + ' — pedidas ' + item.qty + ', van ' + item.picked + '.' + (step > 1 ? ' Si abriste un paquete, ajusta con ?.' : ''), 'var(--danger-text)');
+    setFeedback('Exceso: ' + itemLabel + stepTxt + ' — pedidas ' + item.qty + ', van ' + item.picked + '.' + (step > 1 ? ' Si abriste un paquete, ajusta con ✎.' : ''), 'var(--danger-text)');
   } else if(item.picked === item.qty){
     setFeedback('Completo: ' + itemLabel + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--success-text)');
   } else {
@@ -2072,7 +2088,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.7',
+    version: 'V2.8',
     exportedAt: Date.now(),
     inventario: { stock: invStock, activo: invAct, cerrados: invCer },
     productCatalog: productCatalog,
@@ -2117,12 +2133,15 @@ function importBackupFile(file){
           if(isNew){
             productCatalog[code] = { name: incoming.name || '', description: incoming.description || '', brand: incoming.brand || '', location: incoming.location || '', barcodes: [] };
             if(incoming.packSize) productCatalog[code].packSize = incoming.packSize;
+            invCopyBrandMeta(productCatalog[code], incoming);
             addedCatalog++;
           } else {
             const p = productCatalog[code];
             if(!p.name && incoming.name) p.name = incoming.name;
             if(!p.description && incoming.description) p.description = incoming.description;
-            if(!p.brand && incoming.brand) p.brand = incoming.brand;
+            if(!p.brand && incoming.brand){ p.brand = incoming.brand; invCopyBrandMeta(p, incoming); }
+            else if(!p.brand && incoming.brandNo) p.brandNo = true;
+            if(p.brand && incoming.brandChk && p.brand === incoming.brand) p.brandChk = true;
             if(!p.location && incoming.location) p.location = incoming.location;
             if((!p.packSize || p.packSize === 1) && incoming.packSize > 1) p.packSize = incoming.packSize;
           }
@@ -3235,6 +3254,8 @@ async function importCatalogFromExcel(file){
         if(name && p.name !== name){ p.name = name; changed = true; }
         if(model && p.description !== model){ p.description = model; changed = true; }
         if(brand && p.brand !== brand){ p.brand = brand; changed = true; }
+        // V2.8: la marca de la Lista General reemplaza a la que la app asignó sola
+        if(brand){ delete p.brandSrc; delete p.brandRev; delete p.brandNo; }
         if(!p.barcodes) p.barcodes = [];
         if(changed) updated++; else unchanged++;
       }
@@ -3560,6 +3581,8 @@ document.getElementById('catalog-product-list').addEventListener('input', functi
     productCatalog[code].packSize = Math.max(1, parseInt(e.target.value) || 1);
   } else {
     productCatalog[code][field] = e.target.value;
+    // V2.8: una marca escrita a mano deja de ser "asignada por la app"
+    if(field === 'brand'){ const p = productCatalog[code]; delete p.brandSrc; delete p.brandRev; delete p.brandNo; }
   }
   saveProductCatalog();
 });
@@ -3971,10 +3994,122 @@ let invUI = { filter:null, more:30, pend:null, last:null, panel:null, msg:'', q:
 let invQr = null, invCamLast = 0, invMsgT = null;
 const $i = id => document.getElementById(id);
 const invFmt = n => String(round2(n));
-function invBrand(c){
-  const p = productCatalog[c];
-  const b = p && p.brand ? String(p.brand).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim() : '';
-  return b || 'SIN MARCA';
+// ---- V2.8: marca autom\u00e1tica ----
+// Orden: 1) marca del cat\u00e1logo (Lista General, o la que ya se asign\u00f3)  2) CATEGORIA de MIFACT
+// 3) c\u00f3digos parecidos (mismo prefijo)  4) SIN MARCA. Nunca se crean marcas duplicadas:
+// \u00abPRO TORK\u00bb, \u00abPROTORK\u00bb y \u00abPro-Tork\u00bb son la misma (se ignoran may\u00fasculas, tildes, espacios y signos).
+const INV_NOBRAND = 'SIN MARCA';
+const invBrandKey = s => normHeader(s).replace(/[^A-Z0-9]/g, '');
+const invWords = s => normHeader(s).replace(/[^A-Z0-9% ]/g, ' ').split(' ').filter(Boolean);
+function invLev1(a, b){ // true si a y b difieren en una sola letra (cambiada, sobrante o faltante)
+  if(a === b || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, d = 0;
+  while(i < a.length && j < b.length){
+    if(a[i] === b[j]){ i++; j++; continue; }
+    if(++d > 1) return false;
+    if(a.length > b.length) i++; else if(b.length > a.length) j++; else { i++; j++; }
+  }
+  return d + (a.length - i) + (b.length - j) <= 1;
+}
+// Prefijos de un c\u00f3digo, del m\u00e1s largo al m\u00e1s corto: BOT-JET-35BR -> BOT-JET-, BOT-
+function invPrefixes(code){
+  const s = compactCode(code), out = [];
+  for(let i = s.length - 2; i > 0; i--){
+    if(/[-._\/]/.test(s[i]) && s.slice(0, i).replace(/[^A-Z0-9]/g, '').length >= 3) out.push(s.slice(0, i + 1));
+  }
+  return out;
+}
+function invBrandData(){
+  if(invBrandCache) return invBrandCache;
+  const freq = {};
+  Object.keys(productCatalog).forEach(c => {
+    const b = productCatalog[c].brand; if(!b) return;
+    const n = normHeader(b), k = invBrandKey(n); if(!k) return;
+    (freq[k] = freq[k] || {})[n] = (freq[k][n] || 0) + 1;
+  });
+  const canon = {}; // clave -> c\u00f3mo se escribe la marca (la forma m\u00e1s usada en el cat\u00e1logo)
+  Object.keys(freq).forEach(k => { canon[k] = Object.keys(freq[k]).sort((a, b) => freq[k][b] - freq[k][a])[0]; });
+  const pre = {}; // prefijo -> { marca: productos }
+  Object.keys(productCatalog).forEach(c => {
+    const p = productCatalog[c]; if(!p.brand || p.brandSrc === 'prefijo') return;
+    const b = canon[invBrandKey(p.brand)];
+    invPrefixes(c).forEach(x => { const o = pre[x] || (pre[x] = {}); o[b] = (o[b] || 0) + 1; });
+  });
+  invBrandCache = { canon, pre, cat:{}, res:{} };
+  return invBrandCache;
+}
+function invBrandList(){ const D = invBrandData(); return Object.values(D.canon).sort(); }
+// CATEGORIA de MIFACT -> marca conocida. { brand, how:'segura'|'parecido' } o null si no se parece a ninguna
+function invCatBrand(cat){
+  const D = invBrandData(), n = normHeader(cat);
+  if(!n || n === 'SIN CATEGORIA') return null;
+  if(n in D.cat) return D.cat[n];
+  const k = invBrandKey(n);
+  let r = null;
+  if(k && D.canon[k]) r = { brand:D.canon[k], how:'segura' };
+  else if(k){
+    const cw = invWords(n), hits = new Set();
+    Object.keys(D.canon).forEach(bk => {
+      const b = D.canon[bk];
+      if(k.length >= 5 && invLev1(k, bk)) hits.add(b);                         // NIPON / NIPPON
+      const bw = invWords(b), m = Math.min(cw.length, bw.length);              // SHOT / SHOT RACE, NIPPON / NIPON (COLOMBIA)
+      const a1 = invBrandKey(cw.slice(0, m).join('')), b1 = invBrandKey(bw.slice(0, m).join(''));
+      if(m && ((a1 === b1 && a1.length >= 3) || (a1.length >= 5 && invLev1(a1, b1)))) hits.add(b);
+    });
+    if(hits.size === 1) r = { brand:Array.from(hits)[0], how:'parecido' };
+  }
+  return (D.cat[n] = r);
+}
+function invStockCat(c){
+  const ix = invIdx(invStock), k = ix ? ix.key(c) : null;
+  return k != null && invStock.cat ? String(invStock.cat[k] || '').trim() : '';
+}
+// C\u00f3digos parecidos: el prefijo m\u00e1s largo con 2 o m\u00e1s productos con marca, y todos de la MISMA marca
+function invPrefixBrand(c){
+  const D = invBrandData();
+  for(const x of invPrefixes(c)){
+    const o = D.pre[x]; if(!o) continue;
+    const bs = Object.keys(o), tot = bs.reduce((s, b) => s + o[b], 0);
+    if(tot < 2) continue;
+    return bs.length === 1 ? { brand:bs[0], prefix:x } : null; // prefijo con varias marcas: no se adivina
+  }
+  return null;
+}
+function invBrandInfo(c){
+  const D = invBrandData();
+  if(D.res[c]) return D.res[c];
+  const p = productCatalog[c] || {};
+  let r;
+  if(p.brand){ const n = normHeader(p.brand); r = { brand:D.canon[invBrandKey(n)] || n || INV_NOBRAND, src:p.brandSrc || 'lista', rev:!!p.brandRev }; }
+  else if(p.brandNo) r = { brand:INV_NOBRAND, src:'ninguna' }; // se deshizo la asignaci\u00f3n autom\u00e1tica
+  else {
+    const cat = invStockCat(c), m = cat ? invCatBrand(cat) : null;
+    if(m) r = { brand:m.brand, src:'mifact', rev:m.how !== 'segura', cat };
+    else {
+      const pb = invPrefixBrand(c);
+      r = pb ? { brand:pb.brand, src:'prefijo', rev:true, pre:pb.prefix, cat } : { brand:INV_NOBRAND, src:'ninguna', cat };
+    }
+  }
+  return (D.res[c] = r);
+}
+function invBrand(c){ return invBrandInfo(c).brand; }
+// Al escanear: la marca resuelta se guarda en el cat\u00e1logo (viaja en el respaldo) para que no vuelva a pasar
+function invAssignBrand(c){
+  const p = productCatalog[c]; if(!p || p.brand || p.brandNo) return null;
+  const r = invBrandInfo(c); if(r.src === 'ninguna') return null;
+  p.brand = r.brand; p.brandSrc = r.src;
+  if(r.rev) p.brandRev = true; else delete p.brandRev;
+  saveProductCatalog();
+  return r;
+}
+// Marca de la Lista General distinta de la categor\u00eda de MIFACT
+function invConflict(c){
+  const p = productCatalog[c]; if(!p || !p.brand || p.brandSrc || p.brandChk) return null;
+  const cat = invStockCat(c), m = cat ? invCatBrand(cat) : null, mine = invBrand(c);
+  return m && m.brand !== mine ? { cat, other:m.brand } : null;
+}
+function invCopyBrandMeta(p, inc){
+  ['brandSrc', 'brandRev', 'brandNo', 'brandChk'].forEach(k => { if(inc[k]) p[k] = inc[k]; });
 }
 function invIdx(st){
   if(!st) return null;
@@ -4002,7 +4137,7 @@ async function invImportStock(file){
         const ci = h.indexOf('CODIGO');
         let si = -1; ['STOCK EN ALMACEN', 'STOCK ACTUAL', 'STOCK', 'STOCK GLOBAL'].some(nm => (si = h.indexOf(nm)) >= 0);
         if(ci >= 0 && si >= 0) f = { rows, r, ci, si, gi: h.indexOf('STOCK GLOBAL'),
-          di: Math.max(h.indexOf('PRODUCTO'), h.indexOf('DESCRIPCION')), ki: h.indexOf('CATEGORIA') };
+          di: Math.max(h.indexOf('PRODUCTO'), h.indexOf('DESCRIPCION'), h.indexOf('NOMBRE PRODUCTO')), ki: h.indexOf('CATEGORIA') };
       }
       if(f) break;
     }
@@ -4027,6 +4162,7 @@ async function invImportStock(file){
     let match = 0; Object.keys(items).forEach(k => { if(findCatalogCode(k)) match++; });
     const fecha = $i('inv-stock-date').value ? new Date($i('inv-stock-date').value).getTime() : Date.now();
     invStock = { fecha, importadoEn:Date.now(), archivo:file.name, items, desc, cat, order: ord };
+    invBrandCache = null;
     invSave(INV_K.stock, invStock);
     st.textContent = 'Stock cargado: ' + read + ' filas, ' + pos + ' con stock > 0, ' + neg + ' negativos, ' + dup + ' códigos repetidos (sumados). ' +
       match + ' coinciden con el catálogo y ' + (Object.keys(items).length - match) + ' no (se conservan).' + warn;
@@ -4095,7 +4231,19 @@ function invRemoveChip(key, ok){
   invPersist(); invRender();
 }
 function invPersist(){ return invSave(INV_K.act, invAct); }
-function invAddBrand(b){ if(!invAct.scope.brands.includes(b)) invAct.scope.brands.push(b); invPersist(); invUI.panel = null; invRender(); }
+function invAddBrand(b){
+  if(b === INV_NOBRAND) return; // V2.8: «SIN MARCA» nunca se agrega como marca completa
+  if(!invAct.scope.brands.includes(b)) invAct.scope.brands.push(b);
+  invUI.confirmBrand = null; if(invUI.last) invUI.last.fuera = false;
+  invPersist(); invUI.panel = null; invRender();
+}
+// Cuántos productos nuevos entrarían a «Productos a inventariar» al agregar toda la marca
+function invBrandAddCount(b){
+  const have = new Set(invTargets());
+  const sc = invStock ? invStockCodes() : null;
+  const src = sc ? Object.keys(sc).filter(c => sc[c] === b) : Object.keys(productCatalog).filter(c => invBrand(c) === b);
+  return src.filter(c => !have.has(c)).length;
+}
 function invAddProduct(code){
   if(!productCatalog[code]) return 'no';
   if(invCovered(code)) return 'cov';
@@ -4121,6 +4269,13 @@ function invFlushPend(){
 function invAdd(code, n){
   const b = invBrand(code);
   const B = invAct.brands[b] || (invAct.brands[b] = { updatedAt:0, items:{}, ts:{} });
+  // V2.8: si el producto se contó antes con otra marca (ej. SIN MARCA), su conteo pasa a la marca actual
+  Object.keys(invAct.brands).forEach(o => {
+    const O = invAct.brands[o];
+    if(o === b || !(code in O.items)) return;
+    B.items[code] = round2((B.items[code] || 0) + O.items[code]); B.ts[code] = Math.max(B.ts[code] || 0, O.ts[code] || 0);
+    delete O.items[code]; delete O.ts[code]; O.updatedAt = Date.now();
+  });
   const v = Math.max(0, round2((B.items[code] || 0) + n));
   if(v === 0){ delete B.items[code]; delete B.ts[code]; } else { B.items[code] = v; B.ts[code] = Date.now(); }
   B.updatedAt = Date.now(); invPersist();
@@ -4143,10 +4298,15 @@ function invScan(raw){
     invRender(); return;
   }
   invFlushPend();
+  // V2.8: sin marca propia -> la app la asigna sola y cuenta en el mismo escaneo (sin pedir nada)
+  const asg = invAssignBrand(code);
   const pack = getPackSize(code);
   invAdd(code, pack);
   invUI.last = { code, pack, paq: pack, total: invCounts()[code] || 0, fuera: invHasScope() && !invCovered(code) };
-  invMsg('');
+  invUI.confirmBrand = null;
+  if(asg) invMsg('Marca ' + asg.brand + ' asignada según ' + (asg.src === 'mifact' ? 'MIFACT' : 'códigos parecidos (' + asg.pre + '…)') + (asg.rev ? '. Revísala en «Marcas por revisar».' : '.'));
+  else if(invBrand(code) === INV_NOBRAND) invMsg('Contado sin marca: queda en «Marcas por revisar».');
+  else invMsg('');
   if(navigator.vibrate) try{ navigator.vibrate(60); }catch(e){}
   invRender();
 }
@@ -4292,6 +4452,7 @@ function invRender(){
     (chips.length ? chips.map(c => invChip('', c.done, c.total, c.key)).join('') : '<div class="inv-warn">Sin alcance: lo que escanees se compara, pero lo no escaneado no se evaluará.</div>') +
     '<div style="display:flex;gap:6px;margin-top:8px;"><button type="button" class="toggle-btn' + (invUI.panel === 'brand' ? ' active' : '') + '" style="flex:1;border:1px solid var(--border);" onclick="invPanel(\'brand\')">+ Marca completa</button>' +
     '<button type="button" class="toggle-btn' + (invUI.panel === 'prod' ? ' active' : '') + '" style="flex:1;border:1px solid var(--border);" onclick="invPanel(\'prod\')">+ Productos</button></div>' + invPanelHtml() + '</div>';
+  main += invReviewHtml(counts);
   // --- Área de escaneo: producto elegido, aviso de código sin vincular, último escaneo ---
   let fb = '';
   if(invUI.sel && productCatalog[invUI.sel]) fb += '<div class="inv-row selected" style="margin-top:8px;">' + thumbHtml(invUI.sel, 44, true, productCatalog[invUI.sel].name) +
@@ -4303,8 +4464,20 @@ function invRender(){
     const L = invUI.last, p = productCatalog[L.code] || {};
     fb += '<div class="inv-info" style="display:flex;gap:10px;align-items:center;">' + thumbHtml(L.code, 48, true, p.name) + '<div style="min-width:0;"><div class="muted" style="font-family:monospace;font-size:11px;">' + escapeAttr(L.code) + ' · ' + escapeAttr(invBrand(L.code)) + '</div>' +
       '<div>' + escapeAttr(p.name || L.code) + '</div><b>+' + invFmt(L.pack) + ((L.paq || 1) > 1 ? ' (paq. ×' + L.paq + ')' : '') + ' · total ' + invFmt(L.total) + '</b></div></div>';
-    if(L.fuera) fb += '<div class="inv-warn">Este producto no está en el alcance.<div class="inv-actions"><button type="button" style="flex:1;" onclick="invAddProduct(\'' + escapeAttr(L.code) + '\');invUI.last.fuera=false;invRender();">Agregar este producto</button>' +
-      '<button type="button" style="flex:1;" onclick="invAddBrand(\'' + escapeAttr(invBrand(L.code)) + '\');invUI.last.fuera=false;">Agregar la marca ' + escapeAttr(invBrand(L.code)) + '</button></div></div>';
+    if(L.fuera){
+      // V2.8: la opción principal es agregar solo este producto; la marca completa pide confirmar con la cantidad
+      const lb = invBrand(L.code), lc = escapeAttr(L.code), lbe = escapeAttr(lb);
+      if(invUI.confirmBrand === lb){
+        const nAdd = invBrandAddCount(lb);
+        fb += '<div class="inv-warn">¿Agregar toda la marca <b>' + lbe + '</b>? Se agregarán <b>' + nAdd + '</b> producto(s) a «Productos a inventariar».' +
+          '<div class="inv-actions"><button type="button" class="btn-primary" style="flex:1;" onclick="invAddBrand(\'' + lbe + '\')">Sí, agregar ' + nAdd + '</button>' +
+          '<button type="button" style="flex:1;" onclick="invUI.confirmBrand=null;invRender();">Cancelar</button></div></div>';
+      } else {
+        fb += '<div class="inv-warn">Este producto no está en el alcance.<div class="inv-actions" style="flex-direction:column;">' +
+          '<button type="button" class="btn-primary" onclick="invAddProduct(\'' + lc + '\');invUI.last.fuera=false;invRender();">Agregar solo este producto</button>' +
+          (lb !== INV_NOBRAND ? '<button type="button" onclick="invUI.confirmBrand=\'' + lbe + '\';invRender();">Agregar toda la marca ' + lbe + '…</button>' : '') + '</div></div>';
+      }
+    }
   }
   $i('inv-fb').innerHTML = fb;
   $i('inv-scan-card').style.display = '';
@@ -4347,6 +4520,68 @@ function invRender(){
   else if(invUI.edit && $i('inv-edit-qty') && document.activeElement !== $i('inv-edit-qty')){ const e = $i('inv-edit-qty'); e.focus({ preventScroll:true }); try{ e.select(); }catch(x){} }
   else invFocus();
 }
+// ---- V2.8: Marcas por revisar ----
+// Junta todo: marcas asignadas por parecido, conflictos Lista General vs MIFACT y contados sin marca.
+// Se corrige cuando se quiera, sin el lector en la mano.
+function invReviewItems(counts){
+  counts = counts || (invAct ? invCounts() : {});
+  const out = [], seen = new Set();
+  Object.keys(productCatalog).forEach(c => { if(productCatalog[c].brandRev){ out.push({ c, kind:'rev' }); seen.add(c); } });
+  Object.keys(counts).forEach(c => {
+    if(seen.has(c) || !(counts[c] > 0)) return;
+    const cf = invConflict(c);
+    if(cf){ out.push({ c, kind:'conf', cf }); return; }
+    if(invBrand(c) === INV_NOBRAND) out.push({ c, kind:'none' });
+  });
+  const ord = { none:0, conf:1, rev:2 };
+  return out.sort((a, b) => ord[a.kind] - ord[b.kind] || String(a.c).localeCompare(String(b.c)));
+}
+function invBrandSelect(c, current){
+  const opts = invBrandList().map(b => '<option value="' + escapeAttr(b) + '"' + (b === current ? ' selected' : '') + '>' + escapeAttr(b) + '</option>').join('');
+  return '<select data-rbs="' + escapeAttr(c) + '"><option value="">Elegir marca…</option>' + opts + '</select>';
+}
+function invReviewHtml(counts){
+  const items = invReviewItems(counts);
+  if(!items.length) return '';
+  const nNone = items.filter(x => x.kind === 'none').length;
+  let h = '<div class="card"><h2>Marcas por revisar · ' + items.length + '</h2>';
+  if(!invUI.revOpen){
+    return h + '<div class="muted" style="font-size:13px;margin-bottom:8px;">' + (nNone ? nNone + ' contado(s) sin marca. ' : '') + 'La app asignó o detectó marcas que conviene confirmar. Puedes hacerlo ahora o al cerrar.</div>' +
+      '<button type="button" class="btn-secondary" onclick="invUI.revOpen=true;invRender();">Revisar marcas</button></div>';
+  }
+  h += items.map(x => {
+    const p = productCatalog[x.c] || {}, info = invBrandInfo(x.c), ce = escapeAttr(x.c);
+    let why, acts;
+    if(x.kind === 'rev'){
+      why = 'Asignada <b>' + escapeAttr(info.brand) + '</b> ' + (p.brandSrc === 'prefijo' ? 'por códigos parecidos' : 'por parecido con la categoría de MIFACT' + (invStockCat(x.c) ? ' «' + escapeAttr(invStockCat(x.c)) + '»' : '')) + '.';
+      acts = '<button type="button" class="btn-primary" style="flex:1;width:auto;" onclick="invRevOk(\'' + ce + '\')">Está bien</button>' +
+        '<button type="button" style="flex:1;" onclick="invRevUndo(\'' + ce + '\')">Deshacer</button>';
+    } else if(x.kind === 'conf'){
+      why = 'Lista General: <b>' + escapeAttr(info.brand) + '</b> · MIFACT: «' + escapeAttr(x.cf.cat) + '»' + (invBrandKey(x.cf.cat) !== invBrandKey(x.cf.other) ? ' (' + escapeAttr(x.cf.other) + ')' : '') + '. Se usa la de la Lista General.';
+      acts = '<button type="button" class="btn-primary" style="flex:1;width:auto;" onclick="invRevOk(\'' + ce + '\')">Dejar ' + escapeAttr(info.brand) + '</button>';
+    } else {
+      why = 'Sin marca' + (invStockCat(x.c) ? ' (categoría de MIFACT «' + escapeAttr(invStockCat(x.c)) + '» no coincide con ninguna marca)' : (invStock ? ' (no está en el stock de MIFACT)' : '')) + '. Se contó igual.';
+      acts = '';
+    }
+    return '<div class="inv-rev-row"><div class="code">' + ce + '</div><div>' + escapeAttr(p.name || '(sin nombre)') + '</div><div class="why">' + why + '</div>' +
+      '<div class="inv-actions">' + acts + '</div>' +
+      '<div class="inv-actions">' + invBrandSelect(x.c, x.kind === 'none' ? '' : info.brand) + '<button type="button" onclick="invRevSet(\'' + ce + '\')">' + (x.kind === 'none' ? 'Asignar' : 'Cambiar') + '</button></div></div>';
+  }).join('');
+  return h + '<button type="button" class="btn-secondary" onclick="invUI.revOpen=false;invRender();">Ocultar</button></div>';
+}
+function invRevDone(msg){ saveProductCatalog(); invMsg(msg); invRender(); }
+function invRevOk(c){ const p = productCatalog[c]; if(!p) return; delete p.brandRev; p.brandChk = true; invRevDone('Marca de ' + c + ' confirmada.'); }
+function invRevUndo(c){
+  const p = productCatalog[c]; if(!p) return;
+  p.brand = ''; p.brandNo = true; delete p.brandSrc; delete p.brandRev;
+  invRevDone('Se quitó la marca asignada a ' + c + '. Queda sin marca hasta que elijas una.');
+}
+function invRevSet(c){
+  const el = Array.from(document.querySelectorAll('select[data-rbs]')).find(s => s.getAttribute('data-rbs') === c), p = productCatalog[c];
+  if(!el || !p || !el.value){ invMsg('Elige una marca de la lista.'); invUI.msgWarn = true; invRender(); return; }
+  p.brand = el.value; p.brandSrc = 'manual'; p.brandChk = true; delete p.brandRev; delete p.brandNo;
+  invRevDone('Marca ' + el.value + ' asignada a ' + c + '.');
+}
 function invTargets(){
   const set = new Set(), sc = invStockCodes();
   invAct.scope.brands.forEach(b => {
@@ -4366,12 +4601,28 @@ function invFocus(){
   if(!force && a && a !== i && invIsTyping(a)) return;
   if(document.activeElement !== i) i.focus({ preventScroll:true });
 }
+// V2.8: botón «Teclado». El campo de escaneo no abre el teclado del teléfono (para que el lector
+// funcione sin que el teclado tape la pantalla); con este botón se abre para escribir el SKU de una
+// etiqueta dañada. Después de Enter vuelve solo al modo lector.
+function invKeyboard(on){
+  const i = $i('inv-scan-input'), b = $i('inv-kbd-btn'); if(!i) return;
+  if(on === undefined) on = i.getAttribute('inputmode') === 'none';
+  i.setAttribute('inputmode', on ? 'text' : 'none');
+  if(b){ b.textContent = on ? 'Ocultar teclado' : 'Teclado'; b.classList.toggle('active', on); }
+  i.blur();
+  setTimeout(() => { invUI.forceFocus = true; invFocus(); }, 30);
+}
 function invIsTyping(a){
   return !!a && (/^(TEXTAREA|SELECT)$/.test(a.tagName) || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file)$/.test(a.type)));
 }
 (function(){
   const i = $i('inv-scan-input');
-  i.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); const v = i.value; i.value = ''; invScan(v); } });
+  i.addEventListener('keydown', e => {
+    if(e.key !== 'Enter') return;
+    e.preventDefault(); const v = i.value; i.value = '';
+    if(i.getAttribute('inputmode') !== 'none') invKeyboard(false); // V2.8: después de escribir un código, el teclado se esconde
+    invScan(v);
+  });
   i.addEventListener('blur', () => setTimeout(() => { const a = document.activeElement; if(!a || a === document.body || a.tagName === 'BUTTON' || a.tagName === 'LABEL') invFocus(); }, 60));
   $i('page-inventario').addEventListener('click', e => { if(!/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(invFocus, 80); });
   // V2.7: si el lector "escribe" cuando el foco no está en ningún campo (después de tocar un producto,
@@ -4412,6 +4663,7 @@ function invPanelHtml(){
     const sc = invStockCodes(), cnt = {};
     Object.keys(sc).forEach(c => { cnt[sc[c]] = (cnt[sc[c]] || 0) + 1; });
     const all = {}; Object.keys(productCatalog).forEach(c => { all[invBrand(c)] = 1; });
+    delete all[INV_NOBRAND]; // V2.8: «SIN MARCA» no se ofrece
     const q = normHeader(invUI.q);
     return '<div style="margin-top:8px;"><input type="text" id="inv-q" placeholder="Buscar marca" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invUI.focusQ=true;invRender();">' +
       '<div id="inv-brand-list" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px;">' + Object.keys(all).sort().filter(b => !q || b.includes(q)).map(b => '<button type="button" class="inv-brandbtn" onclick="invAddBrand(\'' + escapeAttr(b) + '\')">' + escapeAttr(b) + ' (' + (cnt[b] || 0) + ')</button>').join('') + '</div></div>';
@@ -4497,15 +4749,45 @@ function invBuildReport(inv){
   // Archivo con el formato exacto de la plantilla de carga masiva de MIFACT
   // Plantilla de carga masiva de MIFACT: SOLO los productos que se están inventariando (alcance o seleccionados),
   // en el orden del reporte. Lo que NO se contó queda con STOCK_FISICO_ACTUAL vacío (MIFACT no lo toca). Si no hay alcance, los productos escaneados. Un conteo parcial fuera del alcance NO se envía.
-  const noScope = !sc.brands.length && !sc.products.length, phys = {};
-  if(stk) rows.forEach(r => { if(r.L !== 'Fuera de alcance' || noScope){ const k = ix.key(r.c); if(k != null && (r.n > 0 || r.L !== 'Fuera de alcance')) phys[k] = r.n > 0 ? r.n : ''; } });
+  // V2.8: un producto contado fuera del alcance entra solo si se confirmó al cerrar (inv.plantExtra).
+  const noScope = !sc.brands.length && !sc.products.length, phys = {}, extra = new Set(inv.plantExtra || []);
+  if(stk) rows.forEach(r => {
+    const k = ix.key(r.c); if(k == null) return;
+    if(r.L !== 'Fuera de alcance' || noScope){ if(r.n > 0 || r.L !== 'Fuera de alcance') phys[k] = r.n > 0 ? r.n : ''; }
+    else if(r.n > 0 && extra.has(r.c)) phys[k] = r.n;
+  });
+  // V2.8: nada contado se omite en silencio: se lista cuál no va en la plantilla y por qué
+  const skipped = [];
+  if(stk) Object.keys(counts).forEach(c => {
+    if(!(counts[c] > 0)) return;
+    const k = ix.key(c);
+    if(k == null) skipped.push({ c, n:counts[c], why:'mifact' });
+    else if(!(k in phys)) skipped.push({ c, n:counts[c], why:'alcance', brand:brandOf(c) });
+  });
   // Descripción EXACTA de MIFACT (la del reporte). Inventarios cerrados con versiones anteriores no la guardaron: se toma del stock actual.
   const dsrc = (stk && stk.desc && Object.keys(stk.desc).length) ? stk.desc : ((invStock && invStock.desc) || {});
   const osrc = (stk && stk.order) || (invStock && invStock.order) || (stk ? Object.keys(stk.items) : []);
   let noDesc = 0;
   const plant = stk ? osrc.filter(k => (k in phys) && (k in stk.items))
     .map(k => { if(!dsrc[k]) noDesc++; return [k, dsrc[k] || '', '', stk.items[k], phys[k]]; }) : [];
-  return { sheets, plant, noDesc };
+  return { sheets, plant, noDesc, skipped };
+}
+function invSkippedText(sk){
+  if(!sk.length) return '';
+  const lab = s => s.c + (s.why === 'mifact' ? ' (no existe en el stock de MIFACT)' : ' (fuera del alcance' + (s.brand === INV_NOBRAND ? ', sin marca' : '') + ')');
+  return 'Ojo: ' + sk.length + ' producto(s) contados NO van en la plantilla de MIFACT: ' + sk.slice(0, 10).map(lab).join(', ') + (sk.length > 10 ? '…' : '') + '.';
+}
+// Lo que quedaría fuera de la plantilla si se cierra ahora (para la confirmación de cierre)
+function invSkippedNow(){
+  if(!invAct || !invStock) return [];
+  const tmp = Object.assign({}, invAct, { stockSnapshot:{ fecha:invStock.fecha, archivo:invStock.archivo, items:invStock.items, desc:invStock.desc || {}, cat:invStock.cat || {}, order:invStock.order } });
+  return invBuildReport(tmp).skipped;
+}
+function invSetExtra(c, on){
+  if(!invAct) return;
+  const s = new Set(invAct.plantExtra || []);
+  if(on) s.add(c); else s.delete(c);
+  invAct.plantExtra = Array.from(s); invPersist(); invRender();
 }
 async function invDownload(i){ const n = await invEmit(invCer[i], true, false); invUI.histMsg = n.length ? { text:n.join(' '), warn:true } : { text:'Reporte de diferencias descargado.', warn:false }; invRender(); }
 async function invDownloadPlant(i){ const n = await invEmit(invCer[i], false, true); invUI.histMsg = n.length ? { text:n.join(' '), warn:true } : { text:'Plantilla de MIFACT descargada.', warn:false }; invRender(); }
@@ -4519,6 +4801,7 @@ async function invEmit(inv, main, plantilla){
   if(plantilla){
     if(!rep.plant.length){ notes.push('No hay stock de MIFACT guardado en este inventario: no se pudo armar la plantilla.'); }
     else {
+      if(rep.skipped.length) notes.push(invSkippedText(rep.skipped));
       if(rep.noDesc) notes.push('Ojo: ' + rep.noDesc + ' producto(s) salen sin descripción en la plantilla porque el stock cargado no la trae. Vuelve a cargar el ReporteStockProduct de MIFACT y descarga la plantilla otra vez desde «Inventarios cerrados».');
       const ws = XLSX.utils.aoa_to_sheet([['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL']].concat(rep.plant));
       ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
@@ -4564,9 +4847,24 @@ function invFormatsHtml(){
     // V2.7: confirmación dentro de la tarjeta, sin ventana emergente
     const counts = invCounts(), pend = invChipData().reduce((s, c) => s + c.pend.length, 0);
     const chosen = INV_FORMATS.filter(x => f[x.key]).map(x => x.label.replace(/ \(\.xlsx\)$/, ''));
+    // V2.8: cuántos contados siguen sin marca y qué contados NO irían en la plantilla (con opción de incluirlos)
+    const noBrand = Object.keys(counts).filter(c => counts[c] > 0 && invBrand(c) === INV_NOBRAND).length;
+    const sk = f.plant ? invSkippedNow() : [], extra = new Set(invAct.plantExtra || []);
+    let skHtml = '';
+    if(sk.length){
+      skHtml = '<div style="margin-top:8px;"><b>' + sk.length + ' producto(s) contados no irían en la plantilla de MIFACT:</b>' +
+        sk.map(s => {
+          const nm = escapeAttr((productCatalog[s.c] || {}).name || ''), ce = escapeAttr(s.c);
+          if(s.why === 'mifact') return '<div class="inv-skip"><input type="checkbox" disabled style="width:auto;margin-top:2px;visibility:hidden;"><span><span style="font-family:monospace;">' + ce + '</span> · ' + invFmt(s.n) + ' u. — ' + nm + '<br><i>No existe en el stock de MIFACT: no se puede subir. Créalo en MIFACT o revisa el código.</i></span></div>';
+          return '<label class="inv-skip"><input type="checkbox" style="width:auto;margin-top:2px;" ' + (extra.has(s.c) ? 'checked' : '') + ' onchange="invSetExtra(\'' + ce + '\', this.checked)">' +
+            '<span><span style="font-family:monospace;">' + ce + '</span> · ' + invFmt(s.n) + ' u. — ' + nm + '<br><i>Fuera del alcance' + (s.brand === INV_NOBRAND ? ' (sin marca)' : ' (' + escapeAttr(s.brand) + ')') + '. Márcalo para incluirlo.</i></span></label>';
+        }).join('') +
+        '<div style="font-size:12px;margin-top:4px;">Si incluyes un producto, MIFACT reemplaza su stock por lo contado: hazlo solo si contaste todas sus unidades.</div></div>';
+    }
     action = '<div class="inv-warn" style="margin-top:6px;"><b>¿Cerrar el inventario «' + escapeAttr(invAct.name) + '»?</b><br>' +
       'Productos contados: ' + Object.keys(counts).length + ' · En el alcance sin contar: ' + pend + (invUI.pend ? '<br>El código sin vincular se anotará en «Sin vincular».' : '') +
-      (invStock ? '' : '<br>Ojo: no hay stock de MIFACT cargado.') + '<br>Se descargará: ' + (chosen.length ? chosen.join(' y ') : 'nada (podrás bajarlos después)') + '.</div>' +
+      (noBrand ? '<br><b>' + noBrand + ' producto(s) contados siguen sin marca.</b> Puedes asignarla en «Marcas por revisar».' : '') +
+      (invStock ? '' : '<br>Ojo: no hay stock de MIFACT cargado.') + '<br>Se descargará: ' + (chosen.length ? chosen.join(' y ') : 'nada (podrás bajarlos después)') + '.' + skHtml + '</div>' +
       '<div style="display:flex;gap:6px;"><button type="button" class="btn-primary" style="flex:1;" onclick="invClose(true)">Sí, cerrar</button>' +
       '<button type="button" style="flex:1;" onclick="invUI.closing=false;invRender();">Cancelar</button></div>';
   } else {
@@ -4600,7 +4898,7 @@ async function invClose(ok){
 function invMerge(inc){
   if(!inc || typeof inc !== 'object') return '';
   const notes = [];
-  if(inc.stock && inc.stock.items && (!invStock || (inc.stock.importadoEn || 0) > (invStock.importadoEn || 0))){ invStock = inc.stock; invSave(INV_K.stock, invStock); notes.push('stock MIFACT actualizado'); }
+  if(inc.stock && inc.stock.items && (!invStock || (inc.stock.importadoEn || 0) > (invStock.importadoEn || 0))){ invStock = inc.stock; invBrandCache = null; invSave(INV_K.stock, invStock); notes.push('stock MIFACT actualizado'); }
   if(Array.isArray(inc.cerrados)){
     const ids = new Set(invCer.map(x => x.id)), nw = inc.cerrados.filter(x => x && x.id && !ids.has(x.id));
     if(nw.length){ invCer = invCer.concat(nw).sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0)); invSave(INV_K.cer, invCer); notes.push(nw.length + ' inventario(s) cerrado(s)'); }
