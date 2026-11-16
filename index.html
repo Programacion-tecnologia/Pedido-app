@@ -125,6 +125,21 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 .inv-skip{ display:flex; gap:8px; align-items:flex-start; padding:6px 0; border-top:1px solid var(--warning-border); font-size:13px; }
 #inv-scan-input{ flex:1; min-width:0; }
 #inv-kbd-btn{ flex-shrink:0; width:auto; font-size:13px; padding:9px 12px; }
+/* V2.9: aviso flotante (se va solo) y vista de inventarios cerrados */
+#inv-toast{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%) translateY(8px); z-index:80; max-width:min(92vw, 460px); width:max-content;
+  background:var(--text); color:#fff; font-size:14px; line-height:1.35; padding:10px 14px; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.25);
+  opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; }
+#inv-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+#inv-toast.warn{ background:var(--warning-text); }
+.inv-view{ margin-top:10px; border-top:1px solid var(--border); padding-top:10px; }
+.inv-vrow{ display:flex; gap:10px; align-items:center; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--card); margin-bottom:5px; }
+.inv-vrow .left{ flex:1; min-width:0; }
+.inv-vrow .code{ font-family:monospace; font-size:11px; color:var(--text-secondary); }
+.inv-vrow .name{ font-size:13px; line-height:1.3; overflow-wrap:anywhere; margin-top:2px; }
+.inv-vrow.v-diff{ background:#fff3c4; border-color:#e0c25a; }
+.inv-vrow.v-ok{ background:var(--success-bg); border-color:#b9d49a; }
+.inv-vnum{ display:flex; gap:10px; flex-shrink:0; text-align:center; font-size:10px; color:var(--text-secondary); }
+.inv-vnum b{ display:block; font-size:15px; color:var(--text); font-weight:600; min-width:26px; }
 
 /* V2.7: vista de PC (pantallas de 1100px o más). En el celular no se aplica nada de esto. */
 @media (min-width:1100px){
@@ -181,7 +196,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.8</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.9</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -614,21 +629,53 @@ function officialCodesNorm(){
   return Object.keys(productCatalog).filter(c => productCatalog[c].fromExcel).map(c => ({ code: c, n: normCode(c) }));
 }
 
+// V2.9: cuando el código venía partido en 3 renglones dentro del PDF ("BOT-" / "JET-" / "35BR"),
+// versiones anteriores dejaban un pedazo en el nombre ("... BLANCO JET-") y guardaban el código
+// incompleto ("BOT-35BR"). Aquí se arma de nuevo el código con los pedazos que quedaron al final
+// del nombre y se devuelve solo si coincide con UN código que `find` reconoce.
+// Devuelve { code, name (sin los pedazos) } o null.
+const CODE_PIECE_RE = /^[A-Z0-9][A-Z0-9.\-_\/]{0,13}$/i;
+function codeFromNameTail(code, name, find){
+  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+  const base = compactCode(code);
+  if(!base || words.length < 2) return null;
+  const found = new Map(); // código encontrado -> cuántas palabras del nombre se usaron
+  for(let k = 1; k <= Math.min(3, words.length - 1); k++){
+    const tail = words.slice(-k);
+    if(!tail.every(w => CODE_PIECE_RE.test(w))) break;
+    const piece = tail.join('').toUpperCase();
+    const tries = [];
+    if(/[\-._\/]$/.test(base)) tries.push(base + piece);                      // "RP-" + "CAMB-" + "RED"
+    if(/[\-._\/]$/.test(piece)){                                              // "BOT-" + "JET-" + "35BR"
+      for(let i = 0; i < base.length - 1; i++) if(/[\-._\/]/.test(base[i])) tries.push(base.slice(0, i + 1) + piece + base.slice(i + 1));
+    }
+    tries.forEach(t => { const hit = find(t); if(hit && !found.has(hit)) found.set(hit, k); });
+  }
+  if(found.size !== 1) return null;
+  const hit = Array.from(found.keys())[0];
+  return { code: hit, name: words.slice(0, words.length - found.get(hit)).join(' ') };
+}
+
 function repairTruncatedCodes(){
   const result = { merged: [], ambiguous: [] };
   const officialNorm = officialCodesNorm();
   if(officialNorm.length === 0) return result;
+  const officialCompact = {};
+  officialNorm.forEach(o => { officialCompact[compactCode(o.code)] = o.code; });
   Object.keys(productCatalog).forEach(code => {
     const p = productCatalog[code];
     if(p.fromExcel) return;
-    const targetCode = findRepairTarget(code, officialNorm);
-    if(!targetCode) return;
+    let targetCode = findRepairTarget(code, officialNorm);
+    if(!targetCode){ const r = codeFromNameTail(code, p.name, t => officialCompact[t] || null); if(r) targetCode = r.code; }
+    if(!targetCode || targetCode === code) return;
     const target = productCatalog[targetCode];
     if(!Array.isArray(target.barcodes)) target.barcodes = [];
     (p.barcodes || []).forEach(bc => { if(!target.barcodes.includes(bc)) target.barcodes.push(bc); });
     if(!target.location && p.location) target.location = p.location;
     if((!target.packSize || target.packSize === 1) && p.packSize > 1) target.packSize = p.packSize;
     delete productCatalog[code];
+    // V2.9: lo contado en el Inventario con el código mal leído pasa al código correcto
+    try{ if(typeof invRenameCode === 'function') invRenameCode(code, targetCode); }catch(e){}
     result.merged.push(code + ' → ' + targetCode);
   });
   if(result.merged.length){
@@ -970,19 +1017,43 @@ function splitItemTokens(text){
   if(tail.length === 0) return null;
 
   // 2) U.M. (UNIDAD, PAR, JUEGO, KIT...). Puede venir vacía.
+  // V2.9: si el artículo termina en números ("KIT CILINDRO HDA CRF 240 67,0") y no hay U.M., esos
+  // números caen en la cola y antes se leían como cantidad y precio. Ahora la cantidad se elige
+  // comprobando la cuenta: CANT × P.UNIT (menos descuento) tiene que dar el TOTAL del renglón.
   let qtyToken = null;
+  const cands = []; // posiciones de la cola que pueden ser la cantidad: entero seguido de un precio con decimales
+  tail.forEach((e, i) => {
+    if(e.pct || !isInt(e.t)) return;
+    const rest = tail.slice(i + 1), nums = rest.filter(x => !x.pct);
+    if(!nums.length || !hasDecimals(nums[0].t) || rest[0].pct) return;
+    let st = 'unknown';
+    if(nums.length >= 2){
+      const q = parseInt(e.t, 10), pr = parseMoney(nums[0].t), tot = parseMoney(nums[nums.length - 1].t), tol = 0.02 + 0.006 * q;
+      const near = v => Math.abs(v - tot) <= tol;
+      const discounts = rest.filter(x => x.pct).concat(nums.slice(1, -1)).map(x => parseMoney(x.t));
+      st = (near(q * pr) || discounts.some(d => near(q * pr * (1 - d / 100)) || near(q * pr - d))) ? 'ok' : 'bad';
+    }
+    cands.push({ i, st });
+  });
+  const okCands = cands.filter(c => c.st === 'ok');
+  const umInTokens = tokens.length >= 2 && /^[A-ZÁÉÍÓÚÑ]{2,10}$/i.test(tokens[tokens.length - 1]) && isInt(tokens[tokens.length - 2]);
+  let pick = okCands.length ? okCands[okCands.length - 1] : null; // la más a la derecha que cuadra
+  // Regla de siempre (por si la cuenta no se puede comprobar): el entero justo antes del primer precio con decimales.
   const firstDec = tail.findIndex(e => !e.pct && hasDecimals(e.t));
-  const qtyInsideTail = firstDec >= 1 && isInt(tail[firstDec - 1].t);
-  if(!qtyInsideTail && tokens.length >= 2 && /^[A-ZÁÉÍÓÚÑ]{2,10}$/i.test(tokens[tokens.length - 1]) && isInt(tokens[tokens.length - 2])){
+  const oldCand = firstDec >= 1 && isInt(tail[firstDec - 1].t) ? (cands.find(c => c.i === firstDec - 1) || { i: firstDec - 1, st: 'unknown' }) : null;
+  if(!pick && !oldCand && umInTokens){
     tokens.pop();
     qtyToken = tokens.pop();
   } else {
-    // Sin U.M.: la cantidad es el entero que va justo antes del primer precio con decimales.
-    if(!qtyInsideTail) return null;
-    qtyToken = tail[firstDec - 1].t;
-    // Lo que quede a la izquierda de la cantidad (ej. una talla "44") vuelve al artículo.
-    tail.slice(0, firstDec - 1).forEach(e => tokens.push(e.t));
-    tail.splice(0, firstDec);
+    if(!pick){
+      const unknown = cands.find(c => c.st === 'unknown');
+      pick = oldCand ? (oldCand.st === 'bad' && unknown ? unknown : oldCand) : unknown;
+    }
+    if(!pick) return null;
+    qtyToken = tail[pick.i].t;
+    // Lo que quede a la izquierda de la cantidad (una talla "44", una medida "240 67,0") vuelve al artículo.
+    tail.slice(0, pick.i).forEach(e => tokens.push(e.t + (e.pct ? '%' : '')));
+    tail.splice(0, pick.i + 1);
   }
 
   const nums = tail.filter(e => !e.pct).map(e => e.t);
@@ -1210,7 +1281,7 @@ async function extractItemsFromPdf(file){
       const tokens = row.text.split(/\s+/).filter(Boolean);
       const looksLikeCodeFragment = tokens.length <= 2
         && tokens.every(t => /^[A-Z0-9.\-_]{1,12}$/i.test(t))
-        && tokens.some(t => /\d/.test(t));
+        && (tokens.some(t => /\d/.test(t)) || (tokens.length === 1 && /[\-._]$/.test(tokens[0]))); // V2.9: "JET-" también es un pedazo de código
       if(looksLikeCodeFragment && /[\-._]$/.test(lastItem.code)) codeText = tokens.join('');
       else nameText = row.text;
     }
@@ -1220,6 +1291,19 @@ async function extractItemsFromPdf(file){
       lastItem.code = findCatalogCode(joined) || joined;
     }
     if(nameText) lastItem.name = (lastItem.name + ' ' + nameText).trim();
+  });
+
+  // V2.9: red de seguridad para códigos partidos en 3 renglones. Si un pedazo del código quedó al
+  // final del nombre ("... BLANCO JET-" con código "BOT-35BR"), se arma el código completo
+  // (BOT-JET-35BR) siempre que exista en el catálogo, y se limpia el nombre.
+  items.forEach(it => {
+    if(findCatalogCode(it.code)){
+      const m = String(it.name).match(/^(.*\S)\s+([A-Z0-9]{1,10}[\-_\/])$/i);
+      if(m && compactCode(it.code).indexOf(m[2].toUpperCase()) >= 0) it.name = m[1];
+      return;
+    }
+    const fix = codeFromNameTail(it.code, it.name, t => findCatalogCode(t));
+    if(fix){ it.code = fix.code; if(fix.name) it.name = fix.name; }
   });
 
   // Controles de calidad
@@ -2088,7 +2172,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.8',
+    version: 'V2.9',
     exportedAt: Date.now(),
     inventario: { stock: invStock, activo: invAct, cerrados: invCer },
     productCatalog: productCatalog,
@@ -2496,7 +2580,10 @@ const ESTADO_STYLE = {
   'COMPLETO':        { fill: 'FFEAF3DE', font: 'FF27500A' },
   'PENDIENTE':       { fill: 'FFFAEEDA', font: 'FF633806' },
   'CON DIFERENCIAS': { fill: 'FFFAEEDA', font: 'FF633806' },
-  'EXCESO':          { fill: 'FFFCEBEB', font: 'FF791F1F' }
+  'EXCESO':          { fill: 'FFFCEBEB', font: 'FF791F1F' },
+  // V2.9: reporte de diferencias del Inventario (mismo criterio que la plantilla: amarillo = hay diferencia)
+  'FALTANTE':        { fill: 'FFFFEB9C', font: 'FF633806' },
+  'SOBRANTE':        { fill: 'FFFFEB9C', font: 'FF633806' }
 };
 
 async function buildStyledWorkbook(data){
@@ -3982,7 +4069,7 @@ document.getElementById('btn-catalog-add').addEventListener('click', function(){
 });
 
 // ===== V2.4: Módulo Inventario (aditivo) =====
-const INV_K = { stock:'rios_stock_mifact', act:'rios_inv_activo', cer:'rios_inventarios', show:'rios_inv_show_stock' };
+const INV_K = { stock:'rios_stock_mifact', act:'rios_inv_activo', cer:'rios_inventarios', show:'rios_inv_show_stock', colors:'rios_inv_plant_colors' };
 function invLoad(k, d){ try{ const s = localStorage.getItem(k); return s ? JSON.parse(s) : d; }catch(e){ return d; } }
 let invWarned = false;
 function invSave(k, v){
@@ -4257,7 +4344,9 @@ function invPasteList(){
     if(!c){ nf.push(raw); return; }
     const r = invAddProduct(c); if(r === 'ok') add++; else cov++;
   });
-  invUI.msg = 'Agregados: ' + add + '. Ya estaban cubiertos: ' + cov + '. No encontrados: ' + nf.length + (nf.length ? ' (' + nf.slice(0, 20).join(', ') + ')' : '') + '.';
+  const res = 'Agregados: ' + add + '. Ya estaban cubiertos: ' + cov + '. No encontrados: ' + nf.length + (nf.length ? ' (' + nf.slice(0, 20).join(', ') + ')' : '') + '.';
+  // V2.9: si todo se encontró, aviso pasajero; si hubo códigos no encontrados, se queda en el panel para revisarlos
+  if(nf.length){ invUI.panelMsg = res; invToast(''); } else { invUI.panelMsg = ''; invMsg(res); }
   invRender();
 }
 // ---- Escaneo ----
@@ -4310,7 +4399,19 @@ function invScan(raw){
   if(navigator.vibrate) try{ navigator.vibrate(60); }catch(e){}
   invRender();
 }
-function invMsg(m){ invUI.msg = m; invUI.msgWarn = false; clearTimeout(invMsgT); if(m) invMsgT = setTimeout(() => { invUI.msg = ''; invRender(); }, 4000); }
+// V2.9: avisos. Los de información («agregado», «actualizado», marca asignada) flotan y se van solos
+// (invMsg). Los que piden atención (errores, cosas que no entraron a la plantilla) se quedan en la
+// pantalla hasta tocar «Entendido» (invSticky). Las confirmaciones siguen dentro de su tarjeta.
+function invToast(text, warn){
+  let el = $i('inv-toast');
+  if(!el){ el = document.createElement('div'); el.id = 'inv-toast'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); document.body.appendChild(el); }
+  clearTimeout(invMsgT);
+  if(!text){ el.className = ''; return; }
+  el.textContent = text; el.className = 'show' + (warn ? ' warn' : '');
+  invMsgT = setTimeout(() => { el.className = ''; }, text.length > 90 ? 5500 : 3500);
+}
+function invMsg(m, warn){ invUI.msg = ''; invUI.msgWarn = false; invToast(m, warn); }
+function invSticky(m, warn){ invToast(''); invUI.msg = m; invUI.msgWarn = !!warn; }
 function invLink(code){
   const p = invUI.pend; if(!p || !productCatalog[code]) return;
   const pack = getPackSize(code);
@@ -4374,14 +4475,14 @@ async function invCam(){
     await invQr.start({ facingMode:'environment' }, { fps:10, qrbox: barcodeQrBox }, txt => {
       const t = Date.now(); if(t - invCamLast < 1500) return; invCamLast = t; invScan(txt);
     }, () => {});
-  }catch(e){ invMsg('No se pudo abrir la cámara.'); await invStopCam(); }
+  }catch(e){ invMsg('No se pudo abrir la cámara.', true); await invStopCam(); }
   invRender();
 }
 async function invStopCam(){
   if(invQr){ try{ await invQr.stop(); await invQr.clear(); }catch(e){} invQr = null; }
   const el = $i('inv-cam'); if(el) el.style.display = 'none';
 }
-function invLeave(){ invStopCam(); if(invAct) invFlushPend(); }
+function invLeave(){ invStopCam(); invToast(''); if(invAct) invFlushPend(); }
 // ---- Pantalla ----
 function invNew(){
   const el = $i('inv-new-name'), name = el ? el.value.trim() : '';
@@ -4419,7 +4520,8 @@ function invLine(code, counts, showStock){
 }
 function invMsgBox(){
   if(!invUI.msg) return '';
-  return '<div class="' + (invUI.msgWarn ? 'inv-warn' : 'inv-info') + '">' + escapeAttr(invUI.msg) + '</div>';
+  return '<div class="' + (invUI.msgWarn ? 'inv-warn' : 'inv-info') + '">' + escapeAttr(invUI.msg) +
+    '<div class="inv-actions"><button type="button" onclick="invUI.msg=\'\';invRender();">Entendido</button></div></div>';
 }
 function invRender(){
   if(!$i('page-inventario')) return;
@@ -4436,6 +4538,7 @@ function invRender(){
       '<button type="button" class="btn-primary" onclick="invNew()">Iniciar inventario</button></div></div>' +
       '<div class="inv-lists inv-lists-one"><div class="inv-list-a">' + invHistHtml() + '</div></div>';
     try{ hydrateThumbs(body); }catch(e){}
+    invFocusView();
     return;
   }
   const counts = invCounts(), codes = Object.keys(counts), units = codes.reduce((s, c) => s + counts[c], 0), chips = invChipData();
@@ -4493,7 +4596,7 @@ function invRender(){
   // Lista de productos a inventariar (con foto). Sin cantidades de MIFACT: el conteo sigue a ciegas.
   const tg = invTargets(), lt = invUI.lt || 'pend', lm = invUI.lmore || 30;
   const tgv = tg.filter(c => lt === 'todos' || (lt === 'pend' ? !counts[c] : !!counts[c]));
-  listA += '<div class="card"><h2>Productos a inventariar · ' + tg.length + '</h2>' + (tg.length ? '<div class="muted" style="font-size:12px;margin-bottom:8px;">Toca un producto para elegirlo y escanea: si su código de barras no está vinculado, te ofrece vincularlo a ese producto.</div>' : '') +
+  listA += '<div class="card"><h2>Productos a inventariar · ' + tg.length + '</h2>' + (tg.length ? '<div class="muted" style="font-size:12px;margin-bottom:8px;">Toca un producto y escanea para vincularle su código de barras.</div>' : '') +
     (tg.length ? '<div style="display:flex;gap:6px;margin-bottom:8px;">' + [['pend', 'Pendientes'], ['cont', 'Contados'], ['todos', 'Todos']].map(t => '<button type="button" class="toggle-btn' + (lt === t[0] ? ' active' : '') + '" style="flex:1;text-align:center;border:1px solid var(--border);' + (lt === t[0] ? 'border-color:var(--accent);' : '') + '" onclick="invUI.lt=\'' + t[0] + '\';invUI.lmore=30;invRender();">' + t[1] + '</button>').join('') + '</div>' +
       tgv.slice(0, lm).map(c => '<div class="inv-row' + (invUI.sel === c ? ' selected' : '') + '" style="cursor:pointer;" onclick="invSelect(\'' + escapeAttr(c) + '\')">' + thumbHtml(c, 48, false) + '<div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr((productCatalog[c] || {}).name || '') + '</div></div>' +
         (invUI.sel === c ? '<span class="badge" style="background:var(--accent);color:#fff;">Elegido</span>' : (counts[c] ? '<span class="badge badge-success">✓ ' + invFmt(counts[c]) + '</span>' : '<span class="badge badge-warning">Pendiente</span>')) + '</div>').join('') +
@@ -4515,7 +4618,8 @@ function invRender(){
   try{ hydrateThumbs($i('inv-body')); hydrateThumbs($i('inv-fb')); }catch(e){}
   // Foco: buscador abierto > búsqueda de vínculo > edición de cantidad > campo de escaneo
   const putEnd = el => { el.focus({ preventScroll:true }); try{ const n = el.value.length; el.setSelectionRange(n, n); }catch(e){} };
-  if(invUI.focusQ && $i('inv-q')){ invUI.focusQ = false; putEnd($i('inv-q')); }
+  if(invFocusView()){ /* buscador de «Ver productos» */ }
+  else if(invUI.focusQ && $i('inv-q')){ invUI.focusQ = false; putEnd($i('inv-q')); }
   else if(invUI.focusLink && $i('inv-link-q')){ invUI.focusLink = false; putEnd($i('inv-link-q')); }
   else if(invUI.edit && $i('inv-edit-qty') && document.activeElement !== $i('inv-edit-qty')){ const e = $i('inv-edit-qty'); e.focus({ preventScroll:true }); try{ e.select(); }catch(x){} }
   else invFocus();
@@ -4578,7 +4682,7 @@ function invRevUndo(c){
 }
 function invRevSet(c){
   const el = Array.from(document.querySelectorAll('select[data-rbs]')).find(s => s.getAttribute('data-rbs') === c), p = productCatalog[c];
-  if(!el || !p || !el.value){ invMsg('Elige una marca de la lista.'); invUI.msgWarn = true; invRender(); return; }
+  if(!el || !p || !el.value){ invMsg('Elige una marca de la lista.', true); return; }
   p.brand = el.value; p.brandSrc = 'manual'; p.brandChk = true; delete p.brandRev; delete p.brandNo;
   invRevDone('Marca ' + el.value + ' asignada a ' + c + '.');
 }
@@ -4593,6 +4697,13 @@ function invTargets(){
 }
 // El campo de escaneo vive fuera de lo que se redibuja y recupera el foco (lector = teclado + Enter).
 // V2.7: no le quita el foco a otro campo donde la persona esté escribiendo.
+function invFocusView(){
+  const el = $i('inv-view-q');
+  if(!invUI.focusView || !el){ invUI.focusView = false; return false; }
+  invUI.focusView = false; el.focus({ preventScroll:true });
+  try{ const n = el.value.length; el.setSelectionRange(n, n); }catch(e){}
+  return true;
+}
 function invFocus(){
   const i = $i('inv-scan-input'), pg = $i('page-inventario');
   if(!i || !invAct || pg.classList.contains('hidden')) return;
@@ -4635,28 +4746,105 @@ function invIsTyping(a){
     if(e.key.length === 1 && e.key !== ' '){ e.preventDefault(); i.focus({ preventScroll:true }); i.value += e.key; }
   }, true);
 })();
+// ---- V2.9: ver los productos de un inventario cerrado (solo lectura) ----
+// Mismas columnas y mismo orden que la plantilla de MIFACT (código, descripción, stock de MIFACT,
+// contado) más la marca y la diferencia, con los mismos colores: amarillo = hay diferencia,
+// verde = coincide, sin color = no contado. Al final van los contados que no entraron a la plantilla.
+function invViewRows(x){
+  const V = invUI.view;
+  if(V.rows) return V.rows;
+  const rep = invBuildReport(x), ix = invIdx(x.stockSnapshot);
+  const row = (k, desc, stock, n, out) => {
+    const cc = findCatalogCode(k), p = cc ? productCatalog[cc] : null, name = desc || (p && p.name) || '', brand = cc ? invBrand(cc) : '';
+    return { k, name, brand, stock, n, out: out || '', txt: normHeader(k + ' ' + name + ' ' + brand) };
+  };
+  let rows;
+  if(rep.plant.length) rows = rep.plant.map(r => row(r[0], r[1], r[3], r[4] === '' ? null : r[4]));
+  else { const c = invCounts(x); rows = []; Object.keys(c).sort().forEach(k => { if(!x.stockSnapshot) rows.push(row(k, '', null, c[k])); }); }
+  rep.skipped.forEach(s => rows.push(row(s.c, '', ix ? ix.get(s.c) : null, s.n, s.why === 'mifact' ? 'No existe en el stock de MIFACT' : 'Fuera del alcance: no fue en la plantilla')));
+  return (V.rows = rows);
+}
+function invView(i){
+  const x = invCer[i]; if(!x) return;
+  invUI.view = (invUI.view && invUI.view.id === x.id) ? null : { id:x.id, q:'', more:40, rows:null };
+  invRender();
+}
+function invViewHtml(x){
+  const V = invUI.view, rows = invViewRows(x), ws = normHeader(V.q).split(' ').filter(Boolean);
+  const kind = r => r.n == null ? 'none' : (r.stock != null && round2(r.n) === round2(r.stock) ? 'ok' : 'diff');
+  const nD = rows.filter(r => kind(r) === 'diff').length, nO = rows.filter(r => kind(r) === 'ok').length;
+  const vis = ws.length ? rows.filter(r => ws.every(w => r.txt.includes(w))) : rows;
+  const num = v => v == null ? '—' : invFmt(v);
+  let h = '<div class="inv-view"><div class="muted" style="font-size:12px;margin-bottom:6px;">' + rows.length + ' producto(s) · <b>' + nD + '</b> con diferencia · <b>' + nO + '</b> coinciden · ' + (rows.length - nD - nO) + ' sin contar. Solo lectura.</div>' +
+    '<input type="text" id="inv-view-q" autocomplete="off" placeholder="Buscar por código, nombre o marca" value="' + escapeAttr(V.q) + '" style="margin-bottom:8px;" ' +
+      'oninput="invUI.view.q=this.value;invUI.view.more=40;clearTimeout(invUI.vqt);invUI.vqt=setTimeout(function(){invUI.focusView=true;invRender();},300);">';
+  h += vis.slice(0, V.more).map(r => {
+    const k = kind(r), d = r.n == null || r.stock == null ? null : round2(r.n - r.stock);
+    return '<div class="inv-vrow' + (k === 'diff' ? ' v-diff' : (k === 'ok' ? ' v-ok' : '')) + '"><div class="left"><div class="code">' + escapeAttr(r.k) + (r.brand ? '<span class="brand-tag">' + escapeAttr(r.brand) + '</span>' : '') + '</div>' +
+      '<div class="name">' + escapeAttr(r.name || '(sin nombre)') + '</div>' + (r.out ? '<div style="font-size:11px;color:var(--danger-text);margin-top:2px;">' + r.out + '</div>' : '') + '</div>' +
+      '<div class="inv-vnum"><span>MIFACT<b>' + num(r.stock) + '</b></span><span>Contado<b>' + num(r.n) + '</b></span><span>Dif.<b>' + (d == null ? '—' : (d > 0 ? '+' : '') + invFmt(d)) + '</b></span></div></div>';
+  }).join('');
+  if(!vis.length) h += '<div class="muted">' + (rows.length ? 'Ningún producto coincide con la búsqueda.' : 'Este inventario no tiene productos.') + '</div>';
+  if(vis.length > V.more) h += '<button type="button" class="btn-secondary" onclick="invUI.view.more+=40;invRender();">Ver más (' + (vis.length - V.more) + ')</button>';
+  return h + '</div>';
+}
+function invColorsOn(){ try{ return localStorage.getItem(INV_K.colors) !== '0'; }catch(e){ return true; } }
+function invColorsHtml(){
+  return '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;" class="muted"><input type="checkbox" style="width:auto;margin-top:1px;" ' + (invColorsOn() ? 'checked' : '') +
+    ' onchange="try{localStorage.setItem(\'' + INV_K.colors + '\',this.checked?\'1\':\'0\');}catch(e){}invRender();"><span>Plantilla con colores: amarillo = hay diferencia, verde = coincide. Quítalo si MIFACT no acepta el archivo.</span></label>';
+}
 function invHistHtml(){
   if(!invCer.length) return '';
-  const hm = invUI.histMsg ? '<div class="' + (invUI.histMsg.warn ? 'inv-warn' : 'inv-info') + '">' + escapeAttr(invUI.histMsg.text) + '</div>' : '';
-  return '<h2 style="margin:18px 2px 10px;">Inventarios cerrados</h2>' + hm + invCer.map((x, i) => '<div class="despacho-card"><div class="title">' + escapeAttr(x.name) + '</div>' +
+  if(invUI.view && !invCer.some(x => x.id === invUI.view.id)) invUI.view = null;
+  const hm = invUI.histMsg ? '<div class="' + (invUI.histMsg.warn ? 'inv-warn' : 'inv-info') + '">' + escapeAttr(invUI.histMsg.text) +
+    '<div class="inv-actions"><button type="button" onclick="invUI.histMsg=null;invRender();">Entendido</button></div></div>' : '';
+  const bs = 'font-size:13px;padding:8px 10px;';
+  return '<h2 style="margin:18px 2px 10px;">Inventarios cerrados</h2>' + (invAct ? '' : '<div style="margin:0 2px 10px;">' + invColorsHtml() + '</div>') + hm + invCer.map((x, i) => {
+    const open = invUI.view && invUI.view.id === x.id;
+    return '<div class="despacho-card"><div class="title">' + escapeAttr(x.name) + '</div>' +
     '<div class="muted" style="font-size:12px;">Cerrado ' + new Date(x.closedAt).toLocaleString('es-PE') + ' · ' + Object.keys(invCounts(x)).length + ' producto(s) contados' + (x.worker ? ' · ' + escapeAttr(x.worker) : '') + '</div>' +
     (invUI.confirmDel === x.id
       ? '<div style="font-size:13px;margin-top:10px;">¿Eliminar este inventario cerrado? No se puede deshacer.</div>' +
-        '<div style="display:flex;gap:6px;margin-top:8px;"><button type="button" class="inv-danger" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDel(' + i + ', true)">Sí, eliminar</button>' +
-        '<button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invUI.confirmDel=null;invRender();">Cancelar</button></div>'
-      : '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"><button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDownloadPlant(' + i + ')">Plantilla MIFACT</button>' +
-        '<button type="button" style="flex:1;font-size:13px;padding:8px 10px;" onclick="invDownload(' + i + ')">Reporte de diferencias</button>' +
-        '<button type="button" style="font-size:13px;padding:8px 10px;color:var(--danger-text);" onclick="invDel(' + i + ')">Eliminar</button></div>') +
-    '</div>').join('');
+        '<div style="display:flex;gap:6px;margin-top:8px;"><button type="button" class="inv-danger" style="flex:1;' + bs + '" onclick="invDel(' + i + ', true)">Sí, eliminar</button>' +
+        '<button type="button" style="flex:1;' + bs + '" onclick="invUI.confirmDel=null;invRender();">Cancelar</button></div>'
+      : '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="' + (open ? 'toggle-btn active' : '') + '" style="flex:1 1 100%;' + bs + (open ? 'border:1px solid var(--accent);text-align:center;' : '') + '" onclick="invView(' + i + ')">' + (open ? 'Ocultar productos' : 'Ver productos') + '</button>' +
+        '<button type="button" style="flex:1;' + bs + '" onclick="invDownloadPlant(' + i + ')">Plantilla MIFACT</button>' +
+        '<button type="button" style="flex:1;' + bs + '" onclick="invDownload(' + i + ')">Reporte de diferencias</button>' +
+        '<button type="button" style="' + bs + 'color:var(--danger-text);" onclick="invDel(' + i + ')">Eliminar</button></div>') +
+    (open ? invViewHtml(x) : '') + '</div>';
+  }).join('');
 }
 function invDel(i, ok){
   const x = invCer[i]; if(!x) return;
   if(!ok){ invUI.confirmDel = x.id; invRender(); return; }
   invCer.splice(i, 1); invSave(INV_K.cer, invCer);
-  invUI.confirmDel = null; invUI.histMsg = { text:'Inventario «' + x.name + '» eliminado.', warn:false };
+  invUI.confirmDel = null; invUI.histMsg = null; invMsg('Inventario «' + x.name + '» eliminado.');
   invRender();
 }
-function invPanel(k){ invUI.panel = invUI.panel === k ? null : k; invUI.q = ''; invUI.msg = ''; invUI.focusQ = !!invUI.panel; invRender(); }
+// V2.9: un código mal leído que se corrigió (ej. BOT-35BR -> BOT-JET-35BR) también se corrige en lo
+// contado, en el inventario abierto y en los cerrados (así la plantilla se puede volver a bajar completa).
+function invRenameCode(oldCode, newCode){
+  if(!oldCode || !newCode || oldCode === newCode) return;
+  const fix = inv => {
+    if(!inv) return false;
+    let ch = false;
+    Object.values(inv.brands || {}).forEach(B => {
+      if(!B.items || !(oldCode in B.items)) return;
+      B.items[newCode] = round2((B.items[newCode] || 0) + B.items[oldCode]); delete B.items[oldCode];
+      if(B.ts){ B.ts[newCode] = Math.max(B.ts[newCode] || 0, B.ts[oldCode] || 0); delete B.ts[oldCode]; }
+      B.updatedAt = Date.now(); ch = true;
+    });
+    const swap = a => { if(!Array.isArray(a)) return a; const j = a.indexOf(oldCode); if(j < 0) return a; ch = true; a.splice(j, 1); if(!a.includes(newCode)) a.push(newCode); return a; };
+    if(inv.scope) swap(inv.scope.products);
+    swap(inv.plantExtra);
+    return ch;
+  };
+  if(fix(invAct)) invPersist();
+  let any = false; invCer.forEach(x => { if(fix(x)) any = true; });
+  if(any) invSave(INV_K.cer, invCer);
+  if(invUI.view) invUI.view.rows = null;
+}
+function invPanel(k){ invUI.panel = invUI.panel === k ? null : k; invUI.q = ''; invUI.panelMsg = ''; invUI.focusQ = !!invUI.panel; invRender(); }
 function invPanelHtml(){
   const p = invUI.panel; if(!p) return '';
   if(p === 'brand'){
@@ -4673,7 +4861,7 @@ function invPanelHtml(){
     return '<div style="margin-top:8px;"><input type="text" id="inv-q" placeholder="Buscar código, nombre, marca o modelo" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invUI.focusQ=true;clearTimeout(invUI.qt);invUI.qt=setTimeout(invRender,350);">' +
       res.map(c => '<div class="inv-row"><div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr(productCatalog[c].name || '') + (invCovered(c) ? ' <i class="muted">(ya está en el alcance)</i>' : '') + '</div></div><button type="button" onclick="invAddProduct(\'' + escapeAttr(c) + '\');invRender();">Agregar</button></div>').join('') +
       '<textarea id="inv-paste" rows="4" placeholder="Pegar lista de códigos (uno por línea)" style="width:100%;margin-top:6px;"></textarea><button type="button" class="btn-secondary" onclick="invPasteList()">Agregar lista</button>' +
-      (invUI.msg ? '<div class="inv-info">' + escapeAttr(invUI.msg) + '</div>' : '') + '</div>';
+      (invUI.panelMsg ? '<div class="inv-warn">' + escapeAttr(invUI.panelMsg) + '</div>' : '') + '</div>';
   }
   return '';
 }
@@ -4789,8 +4977,37 @@ function invSetExtra(c, on){
   if(on) s.add(c); else s.delete(c);
   invAct.plantExtra = Array.from(s); invPersist(); invRender();
 }
-async function invDownload(i){ const n = await invEmit(invCer[i], true, false); invUI.histMsg = n.length ? { text:n.join(' '), warn:true } : { text:'Reporte de diferencias descargado.', warn:false }; invRender(); }
-async function invDownloadPlant(i){ const n = await invEmit(invCer[i], false, true); invUI.histMsg = n.length ? { text:n.join(' '), warn:true } : { text:'Plantilla de MIFACT descargada.', warn:false }; invRender(); }
+async function invDownload(i){ const n = await invEmit(invCer[i], true, false); invUI.histMsg = n.length ? { text:n.join(' '), warn:true } : null; if(!n.length) invMsg('Reporte de diferencias descargado.'); invRender(); }
+async function invDownloadPlant(i){ const n = await invEmit(invCer[i], false, true); invUI.histMsg = n.length ? { text:n.join(' '), warn:true } : null; if(!n.length) invMsg('Plantilla de MIFACT descargada.'); invRender(); }
+// V2.9: plantilla de MIFACT con colores. Mismas columnas, mismo orden y mismo nombre de hoja que
+// siempre; solo se pinta el fondo de las filas contadas: amarillo si lo contado es distinto al stock
+// de MIFACT (faltante o sobrante), verde si coincide. Lo no contado va sin color. Si ExcelJS no
+// carga (sin internet), sale sin colores como antes.
+async function invPlantBlob(plant, colors){
+  const XT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', head = ['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL'];
+  if(colors){
+    try{
+      const ok = await Promise.race([ensureExcelJS(), new Promise(r => setTimeout(() => r(false), 8000))]);
+      if(ok){
+        const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('Lista de productos');
+        ws.columns = [20, 60, 20, 13, 13].map(w => ({ width:w }));
+        ws.addRow(head);
+        plant.forEach(r => {
+          const counted = r[4] !== '' && r[4] != null;
+          const row = ws.addRow([r[0], r[1], null, r[3], counted ? r[4] : null]);
+          if(!counted) return;
+          const argb = round2(r[4]) === round2(r[3]) ? 'FFC6EFCE' : 'FFFFEB9C';
+          for(let c = 1; c <= 5; c++) row.getCell(c).fill = { type:'pattern', pattern:'solid', fgColor:{ argb } };
+        });
+        return { blob: new Blob([await wb.xlsx.writeBuffer()], { type:XT }), colored:true };
+      }
+    }catch(e){ /* cae al formato sin colores */ }
+  }
+  const ws = XLSX.utils.aoa_to_sheet([head].concat(plant));
+  ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lista de productos');
+  return { blob: new Blob([XLSX.write(wb, { bookType:'xlsx', type:'array' })], { type:XT }), colored:false };
+}
 // Devuelve una lista de avisos (V2.7: se muestran dentro de la app, no en ventanas emergentes)
 async function invEmit(inv, main, plantilla){
   if(main === undefined){ main = true; plantilla = true; }
@@ -4803,10 +5020,9 @@ async function invEmit(inv, main, plantilla){
     else {
       if(rep.skipped.length) notes.push(invSkippedText(rep.skipped));
       if(rep.noDesc) notes.push('Ojo: ' + rep.noDesc + ' producto(s) salen sin descripción en la plantilla porque el stock cargado no la trae. Vuelve a cargar el ReporteStockProduct de MIFACT y descarga la plantilla otra vez desde «Inventarios cerrados».');
-      const ws = XLSX.utils.aoa_to_sheet([['CODIGO', 'DESCRIPCION', 'LOTE_SERIE', 'STOCK_ACTUAL', 'STOCK_FISICO_ACTUAL']].concat(rep.plant));
-      ws['!cols'] = [{ wch:20 }, { wch:60 }, { wch:20 }, { wch:13 }, { wch:13 }];
-      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lista de productos');
-      downloadBlob(new Blob([XLSX.write(wb, { bookType:'xlsx', type:'array' })], { type:XT }), 'PLANTILLA_PRODUCTOS_MIFACT_10702389190_' + d + '.xlsx');
+      const want = invColorsOn(), pb = await invPlantBlob(rep.plant, want);
+      if(want && !pb.colored) notes.push('La plantilla salió sin colores porque no se pudo cargar el complemento de Excel (revisa el internet). El contenido es el mismo.');
+      downloadBlob(pb.blob, 'PLANTILLA_PRODUCTOS_MIFACT_10702389190_' + d + '.xlsx');
     }
   }
   // 2) Reporte de diferencias (para revisar antes de subir)
@@ -4838,7 +5054,8 @@ function invFormatsHtml(){
   const f = invFormats(), n = INV_FORMATS.filter(x => f[x.key]).length;
   const rows = INV_FORMATS.map(x => '<label style="display:flex;gap:8px;align-items:flex-start;padding:4px 0 8px;font-size:13px;">' +
     '<input type="checkbox" style="width:auto;margin-top:2px;" ' + (f[x.key] ? 'checked' : '') + ' onchange="invSetFormat(\'' + x.key + '\', this.checked)">' +
-    '<span><span style="font-weight:600;">' + x.label + '</span><br><span class="muted" style="font-size:12px;">' + x.hint + '</span></span></label>').join('');
+    '<span><span style="font-weight:600;">' + x.label + '</span><br><span class="muted" style="font-size:12px;">' + x.hint + '</span></span></label>' +
+    (x.key === 'plant' && f.plant ? '<div style="margin:-4px 0 8px 24px;">' + invColorsHtml() + '</div>' : '')).join('');
   let warn = '';
   if(f.plant && !invStock) warn = '<div class="inv-warn">No hay stock de MIFACT cargado: la plantilla no se podrá generar. Carga el ReporteStockProduct arriba antes de cerrar.</div>';
   if(!n) warn = '<div class="inv-warn">No elegiste ningún formato: se cerrará sin descargar nada. Podrás bajar los archivos después desde «Inventarios cerrados».</div>';
@@ -4875,7 +5092,7 @@ function invFormatsHtml(){
 }
 async function invClose(ok){
   if(!invAct) return;
-  if(!ok){ invUI.closing = true; invRender(); return; }
+  if(!ok){ invUI.closing = true; try{ ensureExcelJS(); }catch(e){} invRender(); return; } // V2.9: ExcelJS se va cargando mientras se confirma
   invFlushPend();
   const f = invFormats();
   const inv = JSON.parse(JSON.stringify(invAct)); inv.closedAt = Date.now();
@@ -4885,13 +5102,13 @@ async function invClose(ok){
   if(saved){ invCer = [inv].concat(invCer); invAct = null; invSave(INV_K.act, null); invUI.err = ''; }
   const notes = (f.plant || f.diff) ? await invEmit(inv, f.diff, f.plant) : [];
   const got = [];
-  if(f.plant && inv.stockSnapshot) got.push('la plantilla de MIFACT lista para la carga masiva');
+  if(f.plant && inv.stockSnapshot) got.push('la plantilla de MIFACT');
   if(f.diff) got.push('el reporte de diferencias');
-  clearTimeout(invMsgT);
   invUI.sel = null; invUI.last = null; invUI.filter = null; invUI.edit = null; invUI.pend = null;
-  invUI.msg = (saved ? 'Inventario «' + inv.name + '» cerrado. ' : 'No se pudo guardar el cierre (almacenamiento lleno): el inventario sigue abierto. ') +
-    (got.length ? 'Se descargó ' + got.join(' y ') + '. Si el equipo bloqueó alguna descarga, bájala desde «Inventarios cerrados». ' : (saved ? 'No se descargó ningún archivo; puedes bajarlos desde «Inventarios cerrados». ' : '')) + notes.join(' ');
-  invUI.msgWarn = !saved || notes.length > 0;
+  const fin = (saved ? 'Inventario «' + inv.name + '» cerrado. ' : 'No se pudo guardar el cierre (almacenamiento lleno): el inventario sigue abierto. ') +
+    (got.length ? 'Se descargó ' + got.join(' y ') + '. También se pueden bajar desde «Inventarios cerrados». ' : (saved ? 'No se descargó ningún archivo; puedes bajarlos desde «Inventarios cerrados». ' : '')) + notes.join(' ');
+  // V2.9: si todo salió bien el aviso es pasajero; si hay algo que revisar, se queda hasta «Entendido»
+  if(!saved || notes.length) invSticky(fin, true); else invMsg(fin);
   invRender();
 }
 // ---- Respaldo: fusionar sin pisar ----
@@ -4922,6 +5139,14 @@ $i('inv-stock-file').addEventListener('change', e => { if(e.target.files[0]) inv
 
 // V2.7: número de versión también en el menú fijo de la vista de PC
 (function(){ const v = document.querySelector('#top-bar h1 .muted'), d = document.getElementById('desk-version'); if(v && d) d.textContent = v.textContent; })();
+// V2.9: al abrir, se corrigen solos los códigos que versiones anteriores guardaron mal leídos
+// (ej. BOT-35BR -> BOT-JET-35BR): su código de barras y lo contado pasan al producto correcto.
+(function(){
+  try{
+    const r = repairTruncatedCodes();
+    if(r.merged.length){ const el = $i('backup-status'); if(el) el.textContent = 'Se corrigieron ' + r.merged.length + ' código(s) mal leídos por versiones anteriores (' + r.merged.join(', ') + ').'; }
+  }catch(e){}
+})();
 renderCatalogStatus();
 renderBuildList();
 showPage('inicio');
