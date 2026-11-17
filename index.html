@@ -196,7 +196,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.9</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.10</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -268,9 +268,9 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 
     <div class="card">
       <h2 id="upload-card-title">Cargar la cotización</h2>
-      <p class="muted" id="upload-card-hint">Sube el PDF de la cotización (se lee solo, en cualquier lugar) o una foto/captura desde tu galería (la lectura automática de fotos solo funciona dentro de Claude.ai). Revisa siempre el resultado antes de continuar.</p>
-      <input type="file" id="photo-input" accept="image/*,application/pdf" class="hidden">
-      <button id="photo-trigger-btn" class="btn-secondary">Subir cotización (PDF o foto)</button>
+      <p class="muted" id="upload-card-hint">Sube el PDF de la cotización: se lee solo. Revisa siempre el resultado antes de continuar.</p>
+      <input type="file" id="photo-input" accept="application/pdf,.pdf" class="hidden">
+      <button id="photo-trigger-btn" class="btn-secondary">Subir cotización (PDF)</button>
       <p id="photo-status"></p>
     </div>
 
@@ -443,8 +443,8 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
     <div class="card">
       <h2>Importar desde PDF</h2>
       <p class="muted">Sube un PDF de lista de precios o catálogo — la app va a intentar extraer los códigos y nombres de todos los productos que encuentre. Lo que ya existe en el catálogo no se sobreescribe.</p>
-      <input type="file" id="catalog-pdf-input" accept="application/pdf,image/*" class="hidden">
-      <button type="button" id="btn-catalog-pdf" class="btn-secondary">Subir PDF o foto del catálogo</button>
+      <input type="file" id="catalog-pdf-input" accept="application/pdf,.pdf" class="hidden">
+      <button type="button" id="btn-catalog-pdf" class="btn-secondary">Subir PDF del catálogo</button>
       <p id="catalog-pdf-status" class="muted" style="margin-top:6px;"></p>
     </div>
 
@@ -511,6 +511,7 @@ function showPage(pageName){
   if(pageName === 'catalogo'){ catalogUI = { adding: null, confirm: null, msg: '', value: '' }; renderCatalogList(); }
   if(pageName === 'inventario') invRender();
   closeSidebar();
+  if(pageName === 'contabilizacion' && pickIsPc()) setTimeout(pickFocus, 80); // V2.10
 }
 
 function openSidebar(){
@@ -544,8 +545,8 @@ function setTipoMovimiento(tipo){
     document.getElementById('quote-seller-wrap').classList.remove('hidden');
     document.getElementById('quote-card-hint').textContent = 'Si subes el PDF abajo, intentamos llenar estos campos solos. Igual puedes corregirlos a mano.';
     document.getElementById('upload-card-title').textContent = 'Cargar la cotización';
-    document.getElementById('upload-card-hint').textContent = 'Sube el PDF de la cotización (se lee solo, en cualquier lugar) o una foto/captura desde tu galería (la lectura automática de fotos solo funciona dentro de Claude.ai). Revisa siempre el resultado antes de continuar.';
-    document.getElementById('photo-trigger-btn').textContent = 'Subir cotización (PDF o foto)';
+    document.getElementById('upload-card-hint').textContent = 'Sube el PDF de la cotización: se lee solo. Revisa siempre el resultado antes de continuar.';
+    document.getElementById('photo-trigger-btn').textContent = 'Subir cotización (PDF)';
     document.getElementById('btn-generate-pdf').textContent = 'Generar PDF de despacho';
   } else {
     document.getElementById('quote-card-title').textContent = 'Datos de la recepción';
@@ -555,8 +556,8 @@ function setTipoMovimiento(tipo){
     document.getElementById('quote-seller-wrap').classList.add('hidden');
     document.getElementById('quote-card-hint').textContent = 'Si subes el PDF abajo, intentamos llenar estos campos solos. Igual puedes corregirlos a mano.';
     document.getElementById('upload-card-title').textContent = 'Cargar la orden de compra / guía';
-    document.getElementById('upload-card-hint').textContent = 'Sube el PDF de la guía u orden de compra del proveedor, o una foto/captura desde tu galería (la lectura automática de fotos solo funciona dentro de Claude.ai). Revisa siempre el resultado antes de continuar.';
-    document.getElementById('photo-trigger-btn').textContent = 'Subir guía u orden (PDF o foto)';
+    document.getElementById('upload-card-hint').textContent = 'Sube el PDF de la guía u orden de compra del proveedor: se lee solo. Revisa siempre el resultado antes de continuar.';
+    document.getElementById('photo-trigger-btn').textContent = 'Subir guía u orden (PDF)';
     document.getElementById('btn-generate-pdf').textContent = 'Generar PDF de recepción';
   }
 }
@@ -717,7 +718,7 @@ function saveProductCatalog(){
   try{
     localStorage.setItem('rios_product_catalog', JSON.stringify(productCatalog));
   }catch(e){
-    // Sin almacenamiento disponible (ej. dentro de Claude.ai): el catálogo
+    // Sin almacenamiento disponible (ej. modo incógnito o memoria llena): el catálogo
     // solo dura esta sesión, pero todo lo demás sigue funcionando igual.
   }
 }
@@ -830,6 +831,11 @@ let scanLocked = false;
 function escapeAttr(s){
   return (s||'').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+// V2.10: texto que va entre comillas simples dentro de un onclick="f('...')".
+// Protege el apóstrofe (O'NEAL) y la barra invertida, que rompían el botón.
+function jsq(s){
+  return escapeAttr((s == null ? '' : String(s)).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' '));
+}
 
 function showScreen(name){
   document.getElementById('screen-build').classList.toggle('hidden', name !== 'build');
@@ -889,15 +895,6 @@ document.getElementById('quick-add-form').addEventListener('submit', function(e)
   document.getElementById('quick-price').value = '';
   document.getElementById('quick-code').focus();
 });
-
-function fileToBase64(file){
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
-    reader.readAsDataURL(file);
-  });
-}
 
 function resizeImage(file, maxDim, quality){
   return new Promise((resolve, reject) => {
@@ -1320,8 +1317,6 @@ async function extractItemsFromPdf(file){
   return { items: items, metadata: metadata, warnings: warnings };
 }
 
-const COTIZACION_PROMPT = 'Este archivo (puede ser un PDF o una foto) es una cotizacion de productos de repuestos y accesorios para motos. Lee la tabla y devuelve EXCLUSIVAMENTE un arreglo JSON valido, sin texto adicional, sin explicaciones, sin marcadores de markdown. Formato exacto: [{"code":"CODIGO","name":"NOMBRE BREVE (maximo 6 palabras)","qty":NUMERO,"price":NUMERO}]. Usa el codigo de la columna CODIGO o COD, el nombre de la columna ARTICULO o PRODUCTO, la cantidad de la columna CANT o CANTIDAD, y el precio de la columna PRECIO UNITARIO (en soles, solo el numero, sin S/). Si una fila no tiene cantidad visible, usa 1. Si no hay precio visible, usa 0. No omitas ninguna fila de producto.';
-
 function formatMoney(n){
   return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -1349,7 +1344,7 @@ function buildPdfWarningsHtml(w, notInCatalog){
   return out;
 }
 
-async function processCotizacionPhoto(file){
+async function processCotizacionFile(file){
   const status = document.getElementById('photo-status');
 
   const isPdf = file.type === 'application/pdf'
@@ -1404,68 +1399,8 @@ async function processCotizacionPhoto(file){
     return;
   }
 
-  status.textContent = 'Preparando la foto...';
-  try{
-    let imageBlob = file;
-    let mediaType = file.type || 'image/jpeg';
-    try{
-      imageBlob = await resizeImage(file, 1568, 0.82);
-      mediaType = 'image/jpeg';
-    }catch(resizeErr){
-      imageBlob = file;
-      mediaType = file.type || 'image/jpeg';
-    }
-    const base64 = await fileToBase64(imageBlob);
-    status.textContent = 'Leyendo la cotización con IA...';
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: [
-            { type:'image', source:{ type:'base64', media_type: mediaType, data: base64 } },
-            { type:'text', text: COTIZACION_PROMPT }
-          ]
-        }]
-      })
-    });
-    if(!response.ok){
-      let detail = 'HTTP ' + response.status;
-      try{
-        const errJson = await response.json();
-        detail = (errJson && errJson.error && errJson.error.message) ? errJson.error.message : JSON.stringify(errJson);
-      }catch(parseErr){}
-      throw new Error(detail);
-    }
-    const data = await response.json();
-    let text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
-    text = text.replace(/```json|```/g, '').trim();
-    const start = text.indexOf('[');
-    const end = text.lastIndexOf(']');
-    if(start !== -1 && end !== -1) text = text.slice(start, end + 1);
-    const parsed = JSON.parse(text);
-    parsed.forEach(p => {
-      const code = (p.code || '').toString().trim();
-      const name = (p.name || '').toString().trim();
-      pickItems.push({
-        code: code,
-        name: name,
-        qty: Number(p.qty) || 1,
-        picked: 0,
-        price: Number(p.price) || 0
-      });
-      upsertProduct(code, name, '');
-    });
-    saveProductCatalog();
-    renderCatalogStatus();
-    renderBuildList();
-    status.textContent = 'Se agregaron ' + parsed.length + ' línea(s). Revisa cada código antes de continuar, sobre todo los que se parecen entre sí.';
-  }catch(err){
-    status.textContent = 'No se pudo leer esta foto automáticamente (' + err.message + '). La lectura de fotos por IA solo funciona dentro de Claude.ai — sube el PDF en su lugar para que funcione en cualquier lugar. También puedes agregar los productos manualmente abajo.';
-  }
+  // V2.10: solo se leen PDFs (la lectura de fotos con IA solo funcionaba dentro de Claude.ai)
+  status.textContent = 'Este archivo no es un PDF. Sube el PDF o agrega los productos a mano abajo.';
 }
 
 document.getElementById('photo-trigger-btn').addEventListener('click', function(){
@@ -1474,7 +1409,7 @@ document.getElementById('photo-trigger-btn').addEventListener('click', function(
 
 document.getElementById('photo-input').addEventListener('change', function(e){
   const file = e.target.files[0];
-  if(file) processCotizacionPhoto(file);
+  if(file) processCotizacionFile(file);
   e.target.value = '';
 });
 
@@ -1826,6 +1761,44 @@ document.getElementById('scan-form').addEventListener('submit', function(e){
   input.focus();
 });
 
+// V2.10: durante la verificación el cursor vuelve solo al campo de escaneo (igual que en el
+// Inventario). En la PC: al tocar cualquier otra parte que no sea un campo para escribir
+// (una fila, un botón, el fondo), el foco regresa al campo. En celulares con pantalla táctil
+// no se fuerza al tocar, para que no se abra el teclado encima de la cámara o de la lista.
+function pickIsPc(){ return window.matchMedia('(hover: hover) and (pointer: fine)').matches; }
+function pickScreenActive(){
+  const pg = document.getElementById('page-contabilizacion'), sc = document.getElementById('screen-pick');
+  return !!pg && !!sc && !pg.classList.contains('hidden') && !sc.classList.contains('hidden');
+}
+function pickFocus(){
+  const i = document.getElementById('scan-input');
+  if(!i || !pickScreenActive()) return;
+  const a = document.activeElement;
+  if(a && a !== i && invIsTyping(a)) return; // no quitarle el foco a otro campo donde se está escribiendo
+  if(!document.getElementById('scan-modal').classList.contains('hidden')) return;
+  if(a !== i) i.focus({ preventScroll:true });
+}
+(function(){
+  const i = document.getElementById('scan-input');
+  i.addEventListener('blur', () => setTimeout(() => {
+    if(!pickIsPc()) return;
+    const a = document.activeElement;
+    if(!a || a === document.body || a.tagName === 'BUTTON' || a.tagName === 'LABEL') pickFocus();
+  }, 60));
+  document.getElementById('screen-pick').addEventListener('click', e => {
+    if(pickIsPc() && !/^(INPUT|TEXTAREA|SELECT|OPTION)$/.test(e.target.tagName)) setTimeout(pickFocus, 80);
+  });
+  // Si el lector "escribe" con el foco fuera de un campo (después de tocar un botón o una fila),
+  // lo escrito se lleva al campo de escaneo en vez de perderse.
+  document.addEventListener('keydown', e => {
+    if(!pickScreenActive()) return;
+    const a = document.activeElement;
+    if(a === i || invIsTyping(a) || e.ctrlKey || e.altKey || e.metaKey) return;
+    if(!document.getElementById('scan-modal').classList.contains('hidden')) return;
+    if(e.key.length === 1 && e.key !== ' '){ e.preventDefault(); i.focus({ preventScroll:true }); i.value += e.key; }
+  }, true);
+})();
+
 async function toggleCamera(){
   const camStatus = document.getElementById('camera-status');
   camStatus.textContent = '';
@@ -2172,7 +2145,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.9',
+    version: 'V2.10',
     exportedAt: Date.now(),
     inventario: { stock: invStock, activo: invAct, cerrados: invCer },
     productCatalog: productCatalog,
@@ -2774,7 +2747,6 @@ function renderMetricas(){
 }
 
 // --- Importar PDF de catálogo (lista de precios) ---
-const CATALOG_PDF_PROMPT = 'Este archivo es una lista de precios o catálogo de productos de accesorios y repuestos para motos. Extrae todos los productos y devuelve EXCLUSIVAMENTE un arreglo JSON válido, sin texto adicional, sin marcadores de markdown. Formato: [{"code":"CODIGO","name":"NOMBRE COMPLETO DEL PRODUCTO"}]. Si una línea tiene un código alfanumérico y una descripción de producto, inclúyela. Omite encabezados, totales, datos de empresa, y líneas sin código o sin nombre. Si no hay una columna de código clara, usa el número de ítem o una cadena vacía. No inventes nombres.';
 
 async function parseCatalogPdfLines(lines){
   const results = [];
@@ -2805,34 +2777,7 @@ async function importCatalogFromPdf(file){
     status.textContent = 'Leyendo el PDF del catálogo...';
     try{
       const lines = await extractPdfLines(file);
-      let items = await parseCatalogPdfLines(lines);
-
-      // Si el parser local no encuentra nada útil, intentamos con IA
-      if(items.length < 3 && typeof window !== 'undefined'){
-        status.textContent = 'No se encontraron suficientes productos con lectura directa. Intentando con IA...';
-        try{
-          const base64 = await fileToBase64(file);
-          const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({
-              model: 'claude-sonnet-4-6',
-              max_tokens: 4000,
-              messages: [{ role: 'user', content: [
-                { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-                { type: 'text', text: CATALOG_PDF_PROMPT }
-              ]}]
-            })
-          });
-          if(response.ok){
-            const data = await response.json();
-            let text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-            text = text.replace(/```json|```/g, '').trim();
-            const s = text.indexOf('['), e = text.lastIndexOf(']');
-            if(s !== -1 && e !== -1) items = JSON.parse(text.slice(s, e + 1));
-          }
-        }catch(aiErr){ /* si la IA falla, usamos lo que tenemos */ }
-      }
+      const items = await parseCatalogPdfLines(lines);
 
       if(items.length === 0){
         status.textContent = 'No se pudieron extraer productos de este PDF. Prueba con un archivo más claro, o agrégalos a mano.';
@@ -2864,58 +2809,8 @@ async function importCatalogFromPdf(file){
     return;
   }
 
-  // Si es imagen, intentar con IA directamente
-  status.textContent = 'Procesando imagen con IA...';
-  try{
-    let imageBlob = file;
-    let mediaType = file.type || 'image/jpeg';
-    try{ imageBlob = await resizeImage(file, 1568, 0.82); mediaType = 'image/jpeg'; }catch(e){}
-    const base64 = await fileToBase64(imageBlob);
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-          { type: 'text', text: CATALOG_PDF_PROMPT }
-        ]}]
-      })
-    });
-    if(!response.ok){
-      let detail = 'HTTP ' + response.status;
-      try{ const j = await response.json(); detail = (j.error && j.error.message) || detail; }catch(e){}
-      throw new Error(detail);
-    }
-    const data = await response.json();
-    let text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    text = text.replace(/```json|```/g, '').trim();
-    const s = text.indexOf('['), e = text.lastIndexOf(']');
-    if(s === -1 || e === -1) throw new Error('La IA no devolvió una lista válida.');
-    const items = JSON.parse(text.slice(s, e + 1));
-    let added = 0;
-    items.forEach(p => {
-      const code = (p.code || '').trim();
-      const name = (p.name || '').trim();
-      if(!code && !name) return;
-      const key = code || name.slice(0, 30);
-      if(!productCatalog[key]){
-        productCatalog[key] = { name: name, location: '', barcodes: [] };
-        added++;
-      } else if(!productCatalog[key].name && name){
-        productCatalog[key].name = name;
-        added++;
-      }
-    });
-    saveProductCatalog();
-    rebuildBarcodeIndex();
-    renderCatalogList();
-    renderInicioStats();
-    status.textContent = 'Se agregaron ' + added + ' producto(s) nuevos al catálogo (' + items.length + ' encontrados).';
-  }catch(err){
-    status.textContent = 'No se pudo leer la imagen (' + err.message + '). Esta función funciona mejor con el PDF directo o dentro de Claude.ai para fotos.';
-  }
+  // V2.10: solo se leen PDFs (la lectura de fotos con IA solo funcionaba dentro de Claude.ai)
+  status.textContent = 'Este archivo no es un PDF. Sube el PDF del catálogo o agrega los productos a mano.';
 }
 
 // --- Importar catálogo desde Excel / CSV ---
@@ -4280,7 +4175,7 @@ function invSearch(q){
   return out;
 }
 function invChip(label, done, total, key){
-  const q = key === '*P' ? 'Productos seleccionados' : key, k = escapeAttr(key);
+  const q = key === '*P' ? 'Productos seleccionados' : key, k = jsq(key);
   const full = total != null && done >= total && total > 0;
   let h = '<div class="inv-chip"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><b>' + escapeAttr(q) + '</b>' +
     '<span class="badge ' + (full ? 'badge-success' : 'badge-warning') + '">' + done + (total != null ? ' de ' + total : '') + ' contados</span></div>';
@@ -4438,7 +4333,7 @@ function invPendHtml(){
     const nm = productCatalog[sel].name || '';
     h += '<div style="margin-top:8px;"><label class="muted inv-label">¿Es el código de barras del producto elegido?</label>' +
       '<div class="inv-row selected" style="margin-bottom:6px;">' + thumbHtml(sel, 40, true, nm) + '<div class="left">' + invCodeLine(sel) + '<div class="name">' + escapeAttr(nm) + '</div></div></div>' +
-      '<button type="button" class="btn-primary" onclick="invLink(\'' + escapeAttr(sel) + '\')">Vincular y contar' + (P.n > 1 ? ' (' + P.n + ')' : '') + '</button></div>';
+      '<button type="button" class="btn-primary" onclick="invLink(\'' + jsq(sel) + '\')">Vincular y contar' + (P.n > 1 ? ' (' + P.n + ')' : '') + '</button></div>';
   }
   const res = invUI.linkQ ? invSearch(invUI.linkQ) : [];
   h += '<div style="margin-top:8px;' + (sel ? 'border-top:1px solid var(--border);padding-top:8px;' : '') + '">' +
@@ -4446,7 +4341,7 @@ function invPendHtml(){
     '<input type="text" id="inv-link-q" autocomplete="off" placeholder="Ej: 00.45.01 o PUÑO" value="' + escapeAttr(invUI.linkQ || '') + '" style="margin-bottom:6px;" ' +
       'oninput="invUI.linkQ=this.value;clearTimeout(invUI.lqt);invUI.lqt=setTimeout(function(){invUI.focusLink=true;invRender();},300);">' +
     res.map(c => '<div class="inv-row">' + thumbHtml(c, 40, true, productCatalog[c].name) + '<div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr(productCatalog[c].name || '') + '</div></div>' +
-      '<button type="button" onclick="invLink(\'' + escapeAttr(c) + '\')">Vincular</button></div>').join('') +
+      '<button type="button" onclick="invLink(\'' + jsq(c) + '\')">Vincular</button></div>').join('') +
     (invUI.linkQ && !res.length ? '<p class="muted" style="font-size:12px;">No encontré productos con ese texto.</p>' : '') + '</div>' +
     '<button type="button" class="btn-secondary" style="margin-top:4px;" onclick="invSkip()">Omitir por ahora (queda en «Sin vincular»)</button>';
   return h;
@@ -4502,7 +4397,7 @@ function invLine(code, counts, showStock){
   const p = productCatalog[code] || {}, n = counts[code], ix = invIdx(invStock);
   let s = '';
   if(showStock && ix){ const v = ix.get(code) || 0, col = n === v ? 'var(--success-text)' : (n < v ? 'var(--warning-text)' : 'var(--danger-text)'); s = '<div style="font-size:12px;margin-top:2px;color:' + col + ';">MIFACT: ' + invFmt(v) + ' · contado: ' + invFmt(n) + '</div>'; }
-  const c = escapeAttr(code), pk = getPackSize(code);
+  const c = jsq(code), pk = getPackSize(code);
   let h = '<div class="inv-row' + (invUI.edit === code ? ' selected' : '') + '">' + thumbHtml(code, 48, true, p.name) + '<div class="left">' + invCodeLine(code) +
     '<div class="name">' + escapeAttr(p.name || '(sin nombre)') + '</div>' + s + '</div>' +
     '<div class="inv-qty"><span class="count">' + invFmt(n) + '</span>' +
@@ -4560,7 +4455,7 @@ function invRender(){
   let fb = '';
   if(invUI.sel && productCatalog[invUI.sel]) fb += '<div class="inv-row selected" style="margin-top:8px;">' + thumbHtml(invUI.sel, 44, true, productCatalog[invUI.sel].name) +
     '<div class="left"><div class="muted" style="font-size:11px;font-weight:600;">PRODUCTO ELEGIDO · escanea su código</div>' + invCodeLine(invUI.sel) + '<div class="name">' + escapeAttr(productCatalog[invUI.sel].name || '') + '</div></div>' +
-    '<button type="button" onclick="invSelect(\'' + escapeAttr(invUI.sel) + '\')">Quitar</button></div>';
+    '<button type="button" onclick="invSelect(\'' + jsq(invUI.sel) + '\')">Quitar</button></div>';
   if(invUI.pend) fb += invPendHtml();
   fb += invMsgBox();
   if(invUI.last && !invUI.pend){
@@ -4569,16 +4464,16 @@ function invRender(){
       '<div>' + escapeAttr(p.name || L.code) + '</div><b>+' + invFmt(L.pack) + ((L.paq || 1) > 1 ? ' (paq. ×' + L.paq + ')' : '') + ' · total ' + invFmt(L.total) + '</b></div></div>';
     if(L.fuera){
       // V2.8: la opción principal es agregar solo este producto; la marca completa pide confirmar con la cantidad
-      const lb = invBrand(L.code), lc = escapeAttr(L.code), lbe = escapeAttr(lb);
+      const lb = invBrand(L.code), lc = jsq(L.code), lbe = escapeAttr(lb), lbj = jsq(lb);
       if(invUI.confirmBrand === lb){
         const nAdd = invBrandAddCount(lb);
         fb += '<div class="inv-warn">¿Agregar toda la marca <b>' + lbe + '</b>? Se agregarán <b>' + nAdd + '</b> producto(s) a «Productos a inventariar».' +
-          '<div class="inv-actions"><button type="button" class="btn-primary" style="flex:1;" onclick="invAddBrand(\'' + lbe + '\')">Sí, agregar ' + nAdd + '</button>' +
+          '<div class="inv-actions"><button type="button" class="btn-primary" style="flex:1;" onclick="invAddBrand(\'' + lbj + '\')">Sí, agregar ' + nAdd + '</button>' +
           '<button type="button" style="flex:1;" onclick="invUI.confirmBrand=null;invRender();">Cancelar</button></div></div>';
       } else {
         fb += '<div class="inv-warn">Este producto no está en el alcance.<div class="inv-actions" style="flex-direction:column;">' +
           '<button type="button" class="btn-primary" onclick="invAddProduct(\'' + lc + '\');invUI.last.fuera=false;invRender();">Agregar solo este producto</button>' +
-          (lb !== INV_NOBRAND ? '<button type="button" onclick="invUI.confirmBrand=\'' + lbe + '\';invRender();">Agregar toda la marca ' + lbe + '…</button>' : '') + '</div></div>';
+          (lb !== INV_NOBRAND ? '<button type="button" onclick="invUI.confirmBrand=\'' + lbj + '\';invRender();">Agregar toda la marca ' + lbe + '…</button>' : '') + '</div></div>';
       }
     }
   }
@@ -4598,7 +4493,7 @@ function invRender(){
   const tgv = tg.filter(c => lt === 'todos' || (lt === 'pend' ? !counts[c] : !!counts[c]));
   listA += '<div class="card"><h2>Productos a inventariar · ' + tg.length + '</h2>' + (tg.length ? '<div class="muted" style="font-size:12px;margin-bottom:8px;">Toca un producto y escanea para vincularle su código de barras.</div>' : '') +
     (tg.length ? '<div style="display:flex;gap:6px;margin-bottom:8px;">' + [['pend', 'Pendientes'], ['cont', 'Contados'], ['todos', 'Todos']].map(t => '<button type="button" class="toggle-btn' + (lt === t[0] ? ' active' : '') + '" style="flex:1;text-align:center;border:1px solid var(--border);' + (lt === t[0] ? 'border-color:var(--accent);' : '') + '" onclick="invUI.lt=\'' + t[0] + '\';invUI.lmore=30;invRender();">' + t[1] + '</button>').join('') + '</div>' +
-      tgv.slice(0, lm).map(c => '<div class="inv-row' + (invUI.sel === c ? ' selected' : '') + '" style="cursor:pointer;" onclick="invSelect(\'' + escapeAttr(c) + '\')">' + thumbHtml(c, 48, false) + '<div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr((productCatalog[c] || {}).name || '') + '</div></div>' +
+      tgv.slice(0, lm).map(c => '<div class="inv-row' + (invUI.sel === c ? ' selected' : '') + '" style="cursor:pointer;" onclick="invSelect(\'' + jsq(c) + '\')">' + thumbHtml(c, 48, false) + '<div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr((productCatalog[c] || {}).name || '') + '</div></div>' +
         (invUI.sel === c ? '<span class="badge" style="background:var(--accent);color:#fff;">Elegido</span>' : (counts[c] ? '<span class="badge badge-success">✓ ' + invFmt(counts[c]) + '</span>' : '<span class="badge badge-warning">Pendiente</span>')) + '</div>').join('') +
       (tgv.length > lm ? '<button type="button" class="btn-secondary" onclick="invUI.lmore=' + (lm + 30) + ';invRender();">Ver más (' + (tgv.length - lm) + ')</button>' : (tgv.length ? '' : '<div class="muted">Nada en esta lista.</div>'))
       : '<div class="muted">Agrega una marca completa o productos al alcance y aquí aparece la lista con sus fotos.</div>') + '</div>';
@@ -4654,22 +4549,22 @@ function invReviewHtml(counts){
       '<button type="button" class="btn-secondary" onclick="invUI.revOpen=true;invRender();">Revisar marcas</button></div>';
   }
   h += items.map(x => {
-    const p = productCatalog[x.c] || {}, info = invBrandInfo(x.c), ce = escapeAttr(x.c);
+    const p = productCatalog[x.c] || {}, info = invBrandInfo(x.c), ce = escapeAttr(x.c), cj = jsq(x.c);
     let why, acts;
     if(x.kind === 'rev'){
       why = 'Asignada <b>' + escapeAttr(info.brand) + '</b> ' + (p.brandSrc === 'prefijo' ? 'por códigos parecidos' : 'por parecido con la categoría de MIFACT' + (invStockCat(x.c) ? ' «' + escapeAttr(invStockCat(x.c)) + '»' : '')) + '.';
-      acts = '<button type="button" class="btn-primary" style="flex:1;width:auto;" onclick="invRevOk(\'' + ce + '\')">Está bien</button>' +
-        '<button type="button" style="flex:1;" onclick="invRevUndo(\'' + ce + '\')">Deshacer</button>';
+      acts = '<button type="button" class="btn-primary" style="flex:1;width:auto;" onclick="invRevOk(\'' + cj + '\')">Está bien</button>' +
+        '<button type="button" style="flex:1;" onclick="invRevUndo(\'' + cj + '\')">Deshacer</button>';
     } else if(x.kind === 'conf'){
       why = 'Lista General: <b>' + escapeAttr(info.brand) + '</b> · MIFACT: «' + escapeAttr(x.cf.cat) + '»' + (invBrandKey(x.cf.cat) !== invBrandKey(x.cf.other) ? ' (' + escapeAttr(x.cf.other) + ')' : '') + '. Se usa la de la Lista General.';
-      acts = '<button type="button" class="btn-primary" style="flex:1;width:auto;" onclick="invRevOk(\'' + ce + '\')">Dejar ' + escapeAttr(info.brand) + '</button>';
+      acts = '<button type="button" class="btn-primary" style="flex:1;width:auto;" onclick="invRevOk(\'' + cj + '\')">Dejar ' + escapeAttr(info.brand) + '</button>';
     } else {
       why = 'Sin marca' + (invStockCat(x.c) ? ' (categoría de MIFACT «' + escapeAttr(invStockCat(x.c)) + '» no coincide con ninguna marca)' : (invStock ? ' (no está en el stock de MIFACT)' : '')) + '. Se contó igual.';
       acts = '';
     }
     return '<div class="inv-rev-row"><div class="code">' + ce + '</div><div>' + escapeAttr(p.name || '(sin nombre)') + '</div><div class="why">' + why + '</div>' +
       '<div class="inv-actions">' + acts + '</div>' +
-      '<div class="inv-actions">' + invBrandSelect(x.c, x.kind === 'none' ? '' : info.brand) + '<button type="button" onclick="invRevSet(\'' + ce + '\')">' + (x.kind === 'none' ? 'Asignar' : 'Cambiar') + '</button></div></div>';
+      '<div class="inv-actions">' + invBrandSelect(x.c, x.kind === 'none' ? '' : info.brand) + '<button type="button" onclick="invRevSet(\'' + cj + '\')">' + (x.kind === 'none' ? 'Asignar' : 'Cambiar') + '</button></div></div>';
   }).join('');
   return h + '<button type="button" class="btn-secondary" onclick="invUI.revOpen=false;invRender();">Ocultar</button></div>';
 }
@@ -4854,12 +4749,12 @@ function invPanelHtml(){
     delete all[INV_NOBRAND]; // V2.8: «SIN MARCA» no se ofrece
     const q = normHeader(invUI.q);
     return '<div style="margin-top:8px;"><input type="text" id="inv-q" placeholder="Buscar marca" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invUI.focusQ=true;invRender();">' +
-      '<div id="inv-brand-list" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px;">' + Object.keys(all).sort().filter(b => !q || b.includes(q)).map(b => '<button type="button" class="inv-brandbtn" onclick="invAddBrand(\'' + escapeAttr(b) + '\')">' + escapeAttr(b) + ' (' + (cnt[b] || 0) + ')</button>').join('') + '</div></div>';
+      '<div id="inv-brand-list" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px;">' + Object.keys(all).sort().filter(b => !q || b.includes(q)).map(b => '<button type="button" class="inv-brandbtn" onclick="invAddBrand(\'' + jsq(b) + '\')">' + escapeAttr(b) + ' (' + (cnt[b] || 0) + ')</button>').join('') + '</div></div>';
   }
   if(p === 'prod'){
     const res = invSearch(invUI.q);
     return '<div style="margin-top:8px;"><input type="text" id="inv-q" placeholder="Buscar código, nombre, marca o modelo" value="' + escapeAttr(invUI.q) + '" oninput="invUI.q=this.value;invUI.focusQ=true;clearTimeout(invUI.qt);invUI.qt=setTimeout(invRender,350);">' +
-      res.map(c => '<div class="inv-row"><div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr(productCatalog[c].name || '') + (invCovered(c) ? ' <i class="muted">(ya está en el alcance)</i>' : '') + '</div></div><button type="button" onclick="invAddProduct(\'' + escapeAttr(c) + '\');invRender();">Agregar</button></div>').join('') +
+      res.map(c => '<div class="inv-row"><div class="left">' + invCodeLine(c) + '<div class="name">' + escapeAttr(productCatalog[c].name || '') + (invCovered(c) ? ' <i class="muted">(ya está en el alcance)</i>' : '') + '</div></div><button type="button" onclick="invAddProduct(\'' + jsq(c) + '\');invRender();">Agregar</button></div>').join('') +
       '<textarea id="inv-paste" rows="4" placeholder="Pegar lista de códigos (uno por línea)" style="width:100%;margin-top:6px;"></textarea><button type="button" class="btn-secondary" onclick="invPasteList()">Agregar lista</button>' +
       (invUI.panelMsg ? '<div class="inv-warn">' + escapeAttr(invUI.panelMsg) + '</div>' : '') + '</div>';
   }
@@ -5073,7 +4968,7 @@ function invFormatsHtml(){
         sk.map(s => {
           const nm = escapeAttr((productCatalog[s.c] || {}).name || ''), ce = escapeAttr(s.c);
           if(s.why === 'mifact') return '<div class="inv-skip"><input type="checkbox" disabled style="width:auto;margin-top:2px;visibility:hidden;"><span><span style="font-family:monospace;">' + ce + '</span> · ' + invFmt(s.n) + ' u. — ' + nm + '<br><i>No existe en el stock de MIFACT: no se puede subir. Créalo en MIFACT o revisa el código.</i></span></div>';
-          return '<label class="inv-skip"><input type="checkbox" style="width:auto;margin-top:2px;" ' + (extra.has(s.c) ? 'checked' : '') + ' onchange="invSetExtra(\'' + ce + '\', this.checked)">' +
+          return '<label class="inv-skip"><input type="checkbox" style="width:auto;margin-top:2px;" ' + (extra.has(s.c) ? 'checked' : '') + ' onchange="invSetExtra(\'' + jsq(s.c) + '\', this.checked)">' +
             '<span><span style="font-family:monospace;">' + ce + '</span> · ' + invFmt(s.n) + ' u. — ' + nm + '<br><i>Fuera del alcance' + (s.brand === INV_NOBRAND ? ' (sin marca)' : ' (' + escapeAttr(s.brand) + ')') + '. Márcalo para incluirlo.</i></span></label>';
         }).join('') +
         '<div style="font-size:12px;margin-top:4px;">Si incluyes un producto, MIFACT reemplaza su stock por lo contado: hazlo solo si contaste todas sus unidades.</div></div>';
