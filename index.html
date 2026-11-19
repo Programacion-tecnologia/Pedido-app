@@ -196,7 +196,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.10</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.12</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -237,11 +237,18 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 
   <section id="screen-build">
 
+    <div id="libre-draft-card" class="hidden"></div>
+
     <div class="card">
       <h2>Tipo de movimiento</h2>
       <div class="row-flex">
         <button type="button" id="btn-tipo-despacho" class="toggle-btn active" style="flex:1; text-align:center; border:1px solid var(--border);">Despacho (salida)</button>
         <button type="button" id="btn-tipo-recepcion" class="toggle-btn" style="flex:1; text-align:center; border:1px solid var(--border);">Recepción (entrada)</button>
+      </div>
+      <div id="libre-wrap" style="margin-top:10px;">
+        <label style="display:flex; gap:8px; align-items:center; font-size:14px;"><input type="checkbox" id="libre-check" style="width:auto;"> Salida libre (sin cantidad pedida)</label>
+        <p id="libre-hint" class="muted hidden" style="margin:6px 0 0;">Cuentas lo que se lleva, sin compararlo con la cotización. Las líneas empiezan en 0; las que queden en 0 no se guardan. El avance se guarda solo en este equipo.</p>
+        <div id="libre-msg"></div>
       </div>
     </div>
 
@@ -257,6 +264,10 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
         <label class="muted" style="display:block; margin-bottom:4px; font-size:12px;">Vendedor (quien hizo la cotización)</label>
         <input id="quote-seller" type="text" placeholder="ej: JOSE ANDRES">
       </div>
+      <div id="quote-obs-wrap" class="hidden" style="margin-top:10px;">
+        <label class="muted" style="display:block; margin-bottom:4px; font-size:12px;">Observación (para qué es esta salida)</label>
+        <input id="quote-obs" type="text" maxlength="300" placeholder="ej: Súper Liga Peruana de Motocross, Fan Fest">
+      </div>
       <p class="muted" style="margin-top:6px; margin-bottom:0;" id="quote-card-hint">Si subes el PDF abajo, intentamos llenar estos campos solos. Igual puedes corregirlos a mano.</p>
     </div>
 
@@ -264,6 +275,13 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
       <h2>Verificado por</h2>
       <input id="worker-name" type="text" placeholder="Tu nombre">
       <p class="muted" style="margin-top:6px; margin-bottom:0;">Se guarda en cada despacho. Se recuerda para los próximos pedidos, no necesitas escribirlo cada vez.</p>
+    </div>
+
+    <div class="card hidden" id="salida-card">
+      <h2>Cargar desde una salida</h2>
+      <p class="muted">Para el retorno de mercadería: elige la salida (o las salidas) que se llevaron y sus productos se cargan como lo que salió. Después escaneas lo que regresó; la diferencia es lo vendido o faltante.</p>
+      <button type="button" class="btn-secondary" id="salida-open-btn">Cargar desde una salida</button>
+      <div id="salida-picker"></div>
     </div>
 
     <div class="card">
@@ -317,9 +335,9 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 
     <div class="stat-grid">
       <div class="stat-box"><div class="num" id="stat-total">0</div><div class="lbl">Líneas</div></div>
-      <div class="stat-box"><div class="num" id="stat-complete" style="color:var(--success-text);">0</div><div class="lbl">Completas</div></div>
-      <div class="stat-box"><div class="num" id="stat-pending">0</div><div class="lbl">Pendientes</div></div>
-      <div class="stat-box"><div class="num" id="stat-excess" style="color:var(--danger-text);">0</div><div class="lbl">Con exceso</div></div>
+      <div class="stat-box"><div class="num" id="stat-complete" style="color:var(--success-text);">0</div><div class="lbl" id="stat-complete-lbl">Completas</div></div>
+      <div class="stat-box"><div class="num" id="stat-pending">0</div><div class="lbl" id="stat-pending-lbl">Pendientes</div></div>
+      <div class="stat-box"><div class="num" id="stat-excess" style="color:var(--danger-text);">0</div><div class="lbl" id="stat-excess-lbl">Con exceso</div></div>
     </div>
 
     <div id="banner"></div>
@@ -511,6 +529,7 @@ function showPage(pageName){
   if(pageName === 'catalogo'){ catalogUI = { adding: null, confirm: null, msg: '', value: '' }; renderCatalogList(); }
   if(pageName === 'inventario') invRender();
   closeSidebar();
+  if(pageName === 'contabilizacion') renderLibreDraftCard(); // V2.11: botón «Continuar conteo en curso»
   if(pageName === 'contabilizacion' && pickIsPc()) setTimeout(pickFocus, 80); // V2.10
 }
 
@@ -560,10 +579,282 @@ function setTipoMovimiento(tipo){
     document.getElementById('photo-trigger-btn').textContent = 'Subir guía u orden (PDF)';
     document.getElementById('btn-generate-pdf').textContent = 'Generar PDF de recepción';
   }
+  // V2.11: la salida libre es un modo del despacho
+  document.getElementById('libre-wrap').classList.toggle('hidden', tipo !== 'despacho');
+  if(tipo !== 'despacho' && salidaLibre) libreSetMode(false);
+  libreApplyLabels();
+  // V2.12: «Cargar desde una salida» solo en Recepción
+  document.getElementById('salida-card').classList.toggle('hidden', tipo !== 'recepcion');
+  const dd = libreLoadDraft(); // si el borrador que se editaba es del otro tipo, deja de editarse (sigue guardado)
+  if(dd && dd.id === libreActiveId && (dd.mode === 'retorno') !== (tipo === 'recepcion')) libreActiveId = null;
+  renderLibreDraftCard();
+  if(tipo !== 'recepcion'){ retornoDe = null; salidaUI = null; document.getElementById('salida-picker').innerHTML = ''; renderSalidaPicker(); }
+  retornoApplyLabels();
 }
 
 document.getElementById('btn-tipo-despacho').addEventListener('click', function(){ setTipoMovimiento('despacho'); });
 document.getElementById('btn-tipo-recepcion').addEventListener('click', function(){ setTipoMovimiento('recepcion'); });
+
+// --- V2.11: Salida libre (contar lo que se lleva sin compararlo con una cantidad pedida) ---
+// El pedido se marca con libre: true. Mientras se cuenta, cada cambio se copia en
+// localStorage (rios_borrador_libre) para poder seguir si se cierra la app. Hay un solo
+// borrador a la vez y se borra solo al generar el PDF (o con «Descartar», con confirmación).
+const LIBRE_KEY = 'rios_borrador_libre';
+// Código que MIFACT usa para los productos sin código (bolsas, cinta, stickers...): varias
+// líneas de una misma cotización lo comparten y ningún producto físico lo trae, así que
+// esas líneas se cuentan a mano (+ / ✎) y nunca se le vincula un código de barras.
+const SIN_CODIGO = '9810171542916';
+let salidaLibre = false;
+let libreActiveId = null;      // id del borrador que se está editando en esta pantalla
+let libreConfirmDiscard = false;
+
+function libreLoadDraft(){
+  try{ const d = JSON.parse(localStorage.getItem(LIBRE_KEY) || 'null'); return d && Array.isArray(d.items) ? d : null; }catch(e){ return null; }
+}
+function libreDeleteDraft(){ try{ localStorage.removeItem(LIBRE_KEY); }catch(e){} }
+function libreHeaderData(){
+  const v = id => document.getElementById(id).value.trim();
+  return { quoteNumber: v('quote-number'), quoteDate: v('quote-date'), client: v('quote-client'), seller: v('quote-seller'), obs: v('quote-obs') };
+}
+function libreSave(){
+  // V2.12: el mismo (y único) borrador sirve también para el retorno de una salida (mode: 'retorno')
+  const ret = typeof isRetorno === 'function' && isRetorno();
+  if(!libreActiveId || !((salidaLibre && tipoMovimiento === 'despacho') || ret)) return;
+  const h = libreHeaderData();
+  if(!pickItems.length && !h.quoteNumber && !h.client && !h.obs) return;
+  const screen = document.getElementById('screen-pick').classList.contains('hidden') ? 'build' : 'pick';
+  const draft = Object.assign({ id: libreActiveId, mode: ret ? 'retorno' : 'libre', savedAt: Date.now(), screen: screen }, h, {
+    items: pickItems.map(i => { const o = { code: i.code, name: i.name, qty: i.qty, picked: i.picked, price: i.price || 0 }; if(i.noSalida) o.noSalida = true; return o; })
+  });
+  if(ret) draft.retornoDe = retornoDe;
+  try{ localStorage.setItem(LIBRE_KEY, JSON.stringify(draft)); }
+  catch(e){ libreMsg('⚠ No se pudo guardar el avance (almacenamiento lleno). No cierres la app hasta generar el PDF.', true); }
+}
+function libreMsg(html, warn){
+  const el = document.getElementById('libre-msg');
+  el.innerHTML = html ? '<div class="' + (warn ? 'inv-warn' : 'inv-info') + '">' + html + '</div>' : '';
+}
+function libreApplyLabels(){
+  const on = salidaLibre && tipoMovimiento === 'despacho';
+  document.getElementById('libre-check').checked = on;
+  document.getElementById('libre-hint').classList.toggle('hidden', !on);
+  document.getElementById('quote-obs-wrap').classList.toggle('hidden', !on);
+  document.getElementById('btn-start-verification').textContent = on ? 'Iniciar conteo →' : 'Iniciar verificación →';
+  if(tipoMovimiento === 'despacho') document.getElementById('btn-generate-pdf').textContent = on ? 'Generar PDF de salida' : 'Generar PDF de despacho';
+}
+function libreSetMode(on){
+  salidaLibre = !!on;
+  libreApplyLabels();
+}
+// Al marcar la casilla: si ya hay otro conteo libre guardado, no se empieza uno nuevo encima.
+document.getElementById('libre-check').addEventListener('change', function(e){
+  libreMsg('');
+  if(!e.target.checked){ libreSetMode(false); renderLibreDraftCard(); return; }
+  const d = libreLoadDraft();
+  if(d && d.id !== libreActiveId){
+    e.target.checked = false;
+    libreMsg('⚠ Ya hay un conteo libre en curso (arriba). Continúalo o descártalo antes de empezar otro.', true);
+    renderLibreDraftCard();
+    return;
+  }
+  libreSetMode(true);
+  libreActiveId = (d && d.id) || ('b_' + Date.now());
+  pickItems.forEach(i => { if(!(i.picked > 0)) i.picked = 0; });
+  libreSave();
+  renderLibreDraftCard();
+});
+['quote-number', 'quote-date', 'quote-client', 'quote-seller', 'quote-obs'].forEach(id => {
+  document.getElementById(id).addEventListener('input', libreSave);
+});
+
+function renderLibreDraftCard(){
+  const el = document.getElementById('libre-draft-card');
+  const d = libreLoadDraft();
+  if(!d || d.id === libreActiveId){ el.classList.add('hidden'); el.innerHTML = ''; libreConfirmDiscard = false; return; }
+  const withQty = d.items.filter(i => i.picked > 0);
+  const units = withQty.reduce((s, i) => s + i.picked, 0);
+  const when = new Date(d.savedAt || Date.now());
+  const ref = [d.quoteNumber ? (d.mode === 'retorno' ? '' : 'Cot. ') + d.quoteNumber : '', d.client || '', d.obs || ''].filter(Boolean).map(escapeAttr).join(' · ');
+  let html = '<div class="card" style="border-color:var(--success-border); background:var(--success-bg);">'
+    + '<h2 style="color:var(--success-text);">' + (d.mode === 'retorno' ? 'Retorno en curso' : 'Conteo libre en curso') + '</h2>'
+    + '<p class="muted" style="margin-bottom:8px;">' + (ref ? ref + '<br>' : '') + d.items.length + ' línea(s) · ' + withQty.length + (d.mode === 'retorno' ? ' con algo regresado · ' + units + ' unidad(es) regresadas' : ' con cantidad · ' + units + ' unidad(es)')
+    + '<br>Guardado el ' + when.toLocaleDateString('es-PE') + ' a las ' + when.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) + '</p>'
+    + '<button type="button" class="btn-primary" data-act="libre-continue">Continuar conteo en curso</button>';
+  if(libreConfirmDiscard){
+    html += '<div class="inv-warn" style="margin-top:8px;">¿Descartar este conteo? Se pierden las cantidades contadas y no se guarda nada' + (d.mode === 'retorno' ? ' (las salidas guardadas no se tocan).' : '.')
+      + '<div class="inv-actions"><button type="button" data-act="libre-discard-ok" style="color:var(--danger-text);">Sí, descartar</button><button type="button" data-act="libre-discard-no">Cancelar</button></div></div>';
+  } else {
+    html += '<button type="button" class="btn-secondary" data-act="libre-discard" style="margin-top:6px; color:var(--danger-text);">Descartar este conteo…</button>';
+  }
+  el.innerHTML = html + '</div>';
+  el.classList.remove('hidden');
+}
+document.getElementById('libre-draft-card').addEventListener('click', function(e){
+  const b = e.target.closest('button[data-act]');
+  if(!b) return;
+  const act = b.getAttribute('data-act');
+  if(act === 'libre-continue') libreContinue();
+  else if(act === 'libre-discard'){ libreConfirmDiscard = true; renderLibreDraftCard(); }
+  else if(act === 'libre-discard-no'){ libreConfirmDiscard = false; renderLibreDraftCard(); }
+  else if(act === 'libre-discard-ok'){ libreDeleteDraft(); libreConfirmDiscard = false; libreMsg(''); renderLibreDraftCard(); }
+});
+async function libreContinue(){
+  const d = libreLoadDraft();
+  if(!d) return renderLibreDraftCard();
+  if(typeof stopCamera === 'function') await stopCamera();
+  resetFeedback();
+  const esRet = d.mode === 'retorno' && Array.isArray(d.retornoDe); // V2.12
+  setTipoMovimiento(esRet ? 'recepcion' : 'despacho');
+  pickItems = d.items.map(i => { const o = { code: i.code, name: i.name, qty: i.qty, picked: i.picked || 0, price: i.price || 0 }; if(i.noSalida) o.noSalida = true; return o; });
+  document.getElementById('quote-number').value = d.quoteNumber || '';
+  document.getElementById('quote-date').value = d.quoteDate || '';
+  document.getElementById('quote-client').value = d.client || '';
+  document.getElementById('quote-seller').value = d.seller || '';
+  document.getElementById('quote-obs').value = d.obs || '';
+  document.getElementById('photo-status').textContent = '';
+  document.getElementById('build-status').textContent = '';
+  libreMsg('');
+  if(esRet){
+    retornoDe = d.retornoDe;
+    salidaUI = null;
+    document.getElementById('salida-picker').innerHTML = '';
+    renderSalidaPicker();
+    retornoApplyLabels();
+  } else {
+    libreSetMode(true);
+  }
+  libreActiveId = d.id;
+  renderLibreDraftCard();
+  renderBuildList();
+  if(d.screen === 'pick' && pickItems.length){
+    showScreen('pick');
+    renderPickContext();
+    renderPickRows();
+    updateStats();
+    if(pickIsPc()) setTimeout(pickFocus, 80);
+  } else {
+    showScreen('build');
+  }
+}
+// Para los botones «Nuevo pedido»: se deja de editar el borrador (sigue guardado).
+function libreLeave(){
+  libreSetMode(false);
+  libreActiveId = null;
+  libreMsg('');
+  document.getElementById('quote-obs').value = '';
+  renderLibreDraftCard();
+}
+
+// --- V2.12: Retorno de mercadería («Cargar desde una salida» en Recepción) ---
+// Se lee el despacho GUARDADO (no el PDF que exporta la app). Se pueden juntar varias salidas:
+// lo que salió es la cantidad esperada, se escanea lo que regresó y la diferencia es lo vendido
+// o faltante. Un producto que regresa sin haber salido se agrega con confirmación (noSalida).
+let retornoDe = null;   // [{ id, quoteNumber, libre }] si la recepción se cargó desde salidas
+let salidaUI = null;    // selector abierto: { sel: [ids], q: '' }
+function isRetorno(){ return tipoMovimiento === 'recepcion' && !!retornoDe; }
+function retornoApplyLabels(){
+  if(tipoMovimiento !== 'recepcion') return;
+  const r = isRetorno();
+  document.getElementById('quote-card-title').textContent = r ? 'Datos del retorno' : 'Datos de la recepción';
+  document.getElementById('quote-number-label').textContent = r ? 'N° de retorno (referencia)' : 'N° de orden de compra / guía';
+  document.getElementById('quote-client-label').textContent = r ? 'Cliente / destino de la salida' : 'Proveedor';
+  document.getElementById('btn-generate-pdf').textContent = r ? 'Generar PDF de retorno' : 'Generar PDF de recepción';
+}
+function salidaUnits(d){ return (d.items || []).reduce((s, i) => s + (i.picked || 0), 0); }
+function salidaCandidates(){
+  return loadDespachos().filter(d => (d.items || []).some(i => i.picked > 0))
+    .sort((a, b) => ((b.libre ? 1 : 0) - (a.libre ? 1 : 0)) || ((b.verifiedAt || 0) - (a.verifiedAt || 0)));
+}
+function renderSalidaPicker(){
+  const el = document.getElementById('salida-picker');
+  document.getElementById('salida-open-btn').classList.toggle('hidden', !!salidaUI);
+  if(!salidaUI){ return; }
+  el.innerHTML = '<input type="text" id="salida-q" placeholder="Buscar por N° de cotización, cliente u observación" style="margin:4px 0 8px;" value="' + escapeAttr(salidaUI.q) + '">'
+    + '<div id="salida-list"></div>'
+    + '<div class="row-flex" style="margin-top:8px;"><button type="button" class="btn-primary" data-act="salida-load" style="flex:1;"></button>'
+    + '<button type="button" data-act="salida-cancel" style="flex:1;">Cancelar</button></div>';
+  renderSalidaList();
+}
+function renderSalidaList(){
+  const box = document.getElementById('salida-list');
+  if(!box || !salidaUI) return;
+  const all = salidaCandidates();
+  const shown = filterMovimientos(all, salidaUI.q.trim()).slice(0, 40);
+  box.innerHTML = all.length === 0 ? '<p class="muted">No hay despachos guardados en este equipo.</p>'
+    : shown.length === 0 ? '<p class="muted">Ninguna salida coincide con la búsqueda.</p>'
+    : '<div style="max-height:340px; overflow:auto; border:1px solid var(--border); border-radius:8px;">' + shown.map(d => {
+      const on = salidaUI.sel.includes(d.id);
+      const f = new Date(d.verifiedAt);
+      const n = d.items.filter(i => i.picked > 0).length;
+      return '<label style="display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border-bottom:1px solid var(--border); font-size:13px;' + (on ? ' background:var(--success-bg);' : '') + '">'
+        + '<input type="checkbox" style="width:auto; margin-top:2px;" data-sid="' + escapeAttr(d.id) + '"' + (on ? ' checked' : '') + '>'
+        + '<span><b>' + escapeAttr(d.quoteNumber || '(sin número)') + '</b> ' + (d.libre ? '<span class="badge badge-success">Salida libre</span>' : '')
+        + '<br>' + escapeAttr(d.client || '(sin cliente)') + (d.obs ? ' · ' + escapeAttr(d.obs) : '')
+        + '<br><span class="muted">' + f.toLocaleDateString('es-PE') + ' · ' + n + ' producto(s) · ' + salidaUnits(d) + ' unidad(es)</span></span></label>';
+    }).join('') + '</div>' + (all.length > shown.length && !salidaUI.q ? '<p class="muted" style="margin-top:4px;">Se muestran las 40 más recientes (las salidas libres primero). Usa el buscador para las demás.</p>' : '');
+  const btn = document.querySelector('#salida-picker [data-act="salida-load"]');
+  const k = salidaUI.sel.length;
+  btn.disabled = k === 0;
+  btn.textContent = k === 0 ? 'Elige una o más salidas' : (pickItems.length ? 'Reemplazar la lista con ' : 'Cargar ') + k + ' salida(s)';
+}
+document.getElementById('salida-open-btn').addEventListener('click', function(){
+  salidaUI = { sel: [], q: '' };
+  renderSalidaPicker();
+});
+document.getElementById('salida-picker').addEventListener('input', function(e){
+  if(e.target.id === 'salida-q'){ salidaUI.q = e.target.value; renderSalidaList(); }
+});
+document.getElementById('salida-picker').addEventListener('change', function(e){
+  const id = e.target.getAttribute('data-sid');
+  if(!id || !salidaUI) return;
+  salidaUI.sel = salidaUI.sel.filter(x => x !== id);
+  if(e.target.checked) salidaUI.sel.push(id);
+  renderSalidaList();
+});
+document.getElementById('salida-picker').addEventListener('click', function(e){
+  const b = e.target.closest('button[data-act]');
+  if(!b) return;
+  if(b.getAttribute('data-act') === 'salida-cancel'){ salidaUI = null; document.getElementById('salida-picker').innerHTML = ''; renderSalidaPicker(); }
+  else if(b.getAttribute('data-act') === 'salida-load') salidaLoad();
+});
+// Junta las salidas elegidas: un producto que está en varias se suma (los «sin código» se
+// juntan por nombre, porque comparten el mismo código).
+function retornoKey(i){
+  return i.code === SIN_CODIGO ? SIN_CODIGO + '|' + String(i.name || '').trim().toLowerCase() : compactCode(i.code);
+}
+function salidaLoad(){
+  if(!salidaUI || !salidaUI.sel.length) return;
+  const dd = libreLoadDraft(); // V2.12: un solo conteo guardado a la vez
+  if(dd && dd.id !== libreActiveId){
+    renderLibreDraftCard();
+    document.getElementById('salida-picker').insertAdjacentHTML('afterbegin', '<div class="inv-warn">⚠ Ya hay un conteo en curso (arriba). Continúalo o descártalo antes de cargar un retorno.</div>');
+    return;
+  }
+  const list = loadDespachos().filter(d => salidaUI.sel.includes(d.id)).sort((a, b) => (a.verifiedAt || 0) - (b.verifiedAt || 0));
+  const map = new Map();
+  list.forEach(d => (d.items || []).forEach(i => {
+    if(!(i.picked > 0)) return;
+    const k = retornoKey(i);
+    const cur = map.get(k);
+    if(cur){ cur.qty += i.picked; if(!cur.price && i.price) cur.price = i.price; }
+    else map.set(k, { code: i.code, name: i.name, qty: i.picked, picked: 0, price: i.price || 0 });
+  }));
+  pickItems = Array.from(map.values());
+  const nums = list.map(d => d.quoteNumber || '(sin número)');
+  const clients = Array.from(new Set(list.map(d => d.client).filter(Boolean)));
+  const t = new Date(), p2 = x => String(x).padStart(2, '0');
+  document.getElementById('quote-number').value = 'RET ' + nums.join(' + ');
+  document.getElementById('quote-date').value = p2(t.getDate()) + '/' + p2(t.getMonth() + 1) + '/' + t.getFullYear();
+  document.getElementById('quote-client').value = clients.join(' / ');
+  retornoDe = list.map(d => ({ id: d.id, quoteNumber: d.quoteNumber || '', libre: !!d.libre }));
+  libreActiveId = (dd && dd.id) || ('b_' + Date.now()); // el retorno se guarda solo mientras se cuenta
+  salidaUI = null;
+  const units = pickItems.reduce((s, i) => s + i.qty, 0);
+  document.getElementById('salida-picker').innerHTML = '<div class="inv-info">✓ Se cargaron ' + pickItems.length + ' producto(s) (' + units + ' unidad(es)) de ' + list.length + ' salida(s): ' + nums.map(escapeAttr).join(', ') + '. Ahora inicia la verificación y escanea lo que regresó.</div>';
+  renderSalidaPicker();
+  retornoApplyLabels();
+  renderBuildList();
+}
 
 let workerName = '';
 try{
@@ -736,6 +1027,7 @@ function upsertProduct(code, name, location, description){
 }
 
 function linkBarcodeToProduct(barcode, code){
+  if(code === SIN_CODIGO) return; // V2.11: ningún producto físico trae el código de «sin código»
   if(!productCatalog[code]) productCatalog[code] = { name: '', location: '', barcodes: [] };
   if(!productCatalog[code].barcodes.includes(barcode)) productCatalog[code].barcodes.push(barcode);
   barcodeIndex[barcode] = code;
@@ -840,6 +1132,7 @@ function jsq(s){
 function showScreen(name){
   document.getElementById('screen-build').classList.toggle('hidden', name !== 'build');
   document.getElementById('screen-pick').classList.toggle('hidden', name !== 'pick');
+  libreSave(); // V2.11: el borrador recuerda en qué pantalla se quedó
 }
 
 function renderBuildList(){
@@ -860,6 +1153,7 @@ function renderBuildList(){
   ).join('');
   document.getElementById('build-list').innerHTML = html || '<p class="muted">Todavía no agregaste productos.</p>';
   document.getElementById('count-build').textContent = pickItems.length;
+  libreSave(); // V2.11
 }
 
 document.getElementById('build-list').addEventListener('input', function(e){
@@ -869,6 +1163,7 @@ document.getElementById('build-list').addEventListener('input', function(e){
   if(field === 'qty') pickItems[idx].qty = Math.max(1, parseInt(e.target.value) || 1);
   else if(field === 'price') pickItems[idx].price = parseFloat(e.target.value) || 0;
   else pickItems[idx][field] = e.target.value;
+  libreSave(); // V2.11
 });
 
 document.getElementById('build-list').addEventListener('click', function(e){
@@ -1420,6 +1715,7 @@ document.getElementById('btn-start-verification').addEventListener('click', func
     return;
   }
   buildStatus.textContent = '';
+  pickEditIdx = null;
   showScreen('pick');
   renderPickContext();
   renderPickRows();
@@ -1437,17 +1733,31 @@ function renderPickContext(){
   if(num) parts.push('<b>' + (esRecepcion ? 'Doc. ' : 'Cot. ') + escapeAttr(num) + '</b>');
   if(client) parts.push((esRecepcion ? 'Proveedor: ' : 'Cliente: ') + escapeAttr(client));
   if(!esRecepcion) parts.push('Vendedor: ' + (seller ? '<b>' + escapeAttr(seller) + '</b>' : '(sin dato)'));
+  if(salidaLibre && !esRecepcion){ // V2.11
+    const obs = document.getElementById('quote-obs').value.trim();
+    parts.unshift('<span class="badge badge-success">Salida libre</span>');
+    if(obs) parts.push('Obs.: ' + escapeAttr(obs));
+  }
   document.getElementById('pick-context').innerHTML = parts.join(' · ');
 }
 
 function rowStyle(item){
+  // V2.11: en la salida libre no hay pedido con qué comparar (sin rojo ni amarillo)
+  if(salidaLibre){
+    return item.picked > 0
+      ? { border:'var(--success-border)', bg:'var(--success-bg)', count:'var(--success-text)' }
+      : { border:'var(--border)', bg:'var(--card)', count:'var(--text-secondary)' };
+  }
   if(item.picked > item.qty) return { border:'var(--danger-border)', bg:'var(--danger-bg)', count:'var(--danger-text)' };
   if(item.picked === item.qty) return { border:'var(--success-border)', bg:'var(--success-bg)', count:'var(--success-text)' };
   if(item.picked > 0) return { border:'var(--warning-border)', bg:'var(--warning-bg)', count:'var(--text)' };
   return { border:'var(--border)', bg:'var(--card)', count:'var(--text-secondary)' };
 }
 
-let pickEditCode = null; // línea con el editor de cantidad abierto
+// V2.11: las filas se identifican por su posición (data-idx) y no por el código: una cotización
+// puede traer varias líneas con el mismo código (ej. el de «productos sin código») y antes
+// los botones de cualquiera de ellas cambiaban siempre la primera.
+let pickEditIdx = null; // línea con el editor de cantidad abierto
 
 // Unidades que suma cada escaneo de este producto (productos que vienen en paquetes de 5, 10, etc.)
 function getPackSize(code){
@@ -1459,71 +1769,93 @@ function getPackSize(code){
 function renderPickRows(){
   // Solo se reserva espacio para fotos si el catálogo ya tiene fotos
   const catalogHasPhotos = pickItems.some(i => (catalogInfo(i.code) || {}).img);
-  const html = pickItems.map(item => {
+  const html = pickItems.map((item, idx) => {
     const s = rowStyle(item);
-    const pack = getPackSize(item.code);
+    const sinCodigo = item.code === SIN_CODIGO;
+    const pack = sinCodigo ? 1 : getPackSize(item.code);
     const packTag = pack > 1 ? ' <span class="badge badge-warning" style="margin-left:4px;">paq. ×' + pack + '</span>' : '';
+    const manualTag = (sinCodigo ? ' <span class="badge badge-warning" style="margin-left:4px;">sin código · contar a mano</span>' : '')
+      + (item.noSalida ? ' <span class="badge badge-warning" style="margin-left:4px;">no estaba en la salida</span>' : ''); // V2.12
     const c = escapeAttr(item.code);
     let editor = '';
-    if(pickEditCode === item.code){
+    if(pickEditIdx === idx){
       editor = '<div style="border:1px solid var(--border); background:var(--card); border-radius:10px; padding:10px 12px; margin:-2px 0 6px;">'
-        + '<label class="muted" style="display:block; margin-bottom:2px;">Cantidad verificada (escribe el total contado)</label>'
+        + '<label class="muted" style="display:block; margin-bottom:2px;">' + (salidaLibre ? 'Cantidad que se lleva (escribe el total)' : 'Cantidad verificada (escribe el total contado)') + '</label>'
         + '<input type="number" min="0" id="pick-edit-picked" value="' + item.picked + '" style="margin-bottom:6px;">'
-        + '<label class="muted" style="display:block; margin-bottom:2px;">Unidades por paquete (cada escaneo suma esta cantidad)</label>'
-        + '<input type="number" min="1" id="pick-edit-pack" value="' + pack + '" style="margin-bottom:6px;">'
-        + '<div style="display:flex; gap:6px;"><button type="button" class="btn-primary" data-act="save-edit" data-code="' + c + '" style="flex:1;">Guardar</button>'
-        + '<button type="button" data-act="close-edit" data-code="' + c + '" style="flex:1;">Cerrar</button></div></div>';
+        + (sinCodigo ? '' : '<label class="muted" style="display:block; margin-bottom:2px;">Unidades por paquete (cada escaneo suma esta cantidad)</label>'
+        + '<input type="number" min="1" id="pick-edit-pack" value="' + pack + '" style="margin-bottom:6px;">')
+        + '<div style="display:flex; gap:6px;"><button type="button" class="btn-primary" data-act="save-edit" data-idx="' + idx + '" style="flex:1;">Guardar</button>'
+        + '<button type="button" data-act="close-edit" data-idx="' + idx + '" style="flex:1;">Cerrar</button></div></div>';
     }
+    const countTxt = salidaLibre ? String(item.picked) : item.picked + '/' + item.qty;
     return '<div class="pick-wrap">'
       + '<div class="pick-row" style="border-color:'+s.border+'; background:'+s.bg+';">'
       + (catalogHasPhotos ? thumbHtml(item.code, 48, true, item.name) : '')
-      + '<div class="left"><div class="code">'+c+brandTag(item.code)+packTag+'</div><div class="name">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
+      + '<div class="left"><div class="code">'+c+brandTag(item.code)+packTag+manualTag+'</div><div class="name">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
       + '<div class="right">'
-        + '<span class="count" style="color:'+s.count+';">'+item.picked+'/'+item.qty+'</span>'
-        + '<button type="button" class="minus-btn" data-act="minus" data-code="'+c+'" aria-label="Quitar ' + pack + '" title="Quitar ' + pack + '">-</button>'
-        + '<button type="button" class="minus-btn" data-act="plus" data-code="'+c+'" aria-label="Sumar ' + pack + '" title="Sumar ' + pack + '">+</button>'
-        + '<button type="button" class="minus-btn" data-act="edit" data-code="'+c+'" aria-label="Editar cantidad" title="Editar cantidad">✎</button>'
+        + '<span class="count" style="color:'+s.count+';">'+countTxt+'</span>'
+        + '<button type="button" class="minus-btn" data-act="minus" data-idx="'+idx+'" aria-label="Quitar ' + pack + '" title="Quitar ' + pack + '">-</button>'
+        + '<button type="button" class="minus-btn" data-act="plus" data-idx="'+idx+'" aria-label="Sumar ' + pack + '" title="Sumar ' + pack + '">+</button>'
+        + '<button type="button" class="minus-btn" data-act="edit" data-idx="'+idx+'" aria-label="Editar cantidad" title="Editar cantidad">✎</button>'
       + '</div>'
     + '</div>' + editor + '</div>';
   }).join('');
   const rowsEl = document.getElementById('pick-rows');
   rowsEl.innerHTML = html;
   hydrateThumbs(rowsEl);
+  libreSave(); // V2.11: cada cambio del conteo libre queda guardado
 }
 
 document.getElementById('pick-rows').addEventListener('click', function(e){
   const btn = e.target.closest('button[data-act]');
   if(!btn) return;
-  const code = btn.getAttribute('data-code');
-  const item = pickItems.find(i => i.code === code);
+  const idx = parseInt(btn.getAttribute('data-idx'), 10);
+  const item = pickItems[idx];
   if(!item) return;
+  const code = item.code;
   const act = btn.getAttribute('data-act');
-  const step = getPackSize(code);
+  const step = code === SIN_CODIGO ? 1 : getPackSize(code);
 
   if(act === 'minus'){
     if(item.picked > 0) item.picked = Math.max(0, item.picked - step);
   } else if(act === 'plus'){
     item.picked += step;
   } else if(act === 'edit'){
-    pickEditCode = (pickEditCode === code) ? null : code;
+    pickEditIdx = (pickEditIdx === idx) ? null : idx;
   } else if(act === 'close-edit'){
-    pickEditCode = null;
+    pickEditIdx = null;
   } else if(act === 'save-edit'){
     const pickedVal = Math.max(0, parseInt(document.getElementById('pick-edit-picked').value) || 0);
-    const packVal = Math.max(1, parseInt(document.getElementById('pick-edit-pack').value) || 1);
+    const packInput = document.getElementById('pick-edit-pack');
+    const packVal = packInput ? Math.max(1, parseInt(packInput.value) || 1) : 1;
     item.picked = pickedVal;
-    if(packVal !== getPackSize(code)){
+    if(packInput && packVal !== getPackSize(code)){
       upsertProduct(code, item.name, '');
       productCatalog[code].packSize = packVal;
       saveProductCatalog();
     }
-    pickEditCode = null;
+    pickEditIdx = null;
   }
   renderPickRows();
   updateStats();
 });
 
 function updateStats(){
+  // V2.11: en la salida libre: Líneas / Con cantidad / Sin llevar / Unidades, y sin banner
+  const libre = salidaLibre;
+  const ret = isRetorno(); // V2.12: retorno de una salida
+  document.getElementById('stat-complete-lbl').textContent = libre ? 'Con cantidad' : ret ? 'Regresó todo' : 'Completas';
+  document.getElementById('stat-pending-lbl').textContent = libre ? 'Sin llevar' : ret ? 'Vendido o faltante' : 'Pendientes';
+  document.getElementById('stat-excess-lbl').textContent = libre ? 'Unidades' : ret ? 'De más / no salió' : 'Con exceso';
+  document.getElementById('stat-excess').style.color = libre ? 'var(--text)' : 'var(--danger-text)';
+  if(libre){
+    document.getElementById('stat-total').textContent = pickItems.length;
+    document.getElementById('stat-complete').textContent = pickItems.filter(i => i.picked > 0).length;
+    document.getElementById('stat-pending').textContent = pickItems.filter(i => !(i.picked > 0)).length;
+    document.getElementById('stat-excess').textContent = pickItems.reduce((s, i) => s + (i.picked || 0), 0);
+    document.getElementById('banner').style.display = 'none';
+    return;
+  }
   const total = pickItems.length;
   const complete = pickItems.filter(i => i.picked === i.qty).length;
   const pending = pickItems.filter(i => i.picked < i.qty).length;
@@ -1538,12 +1870,12 @@ function updateStats(){
     banner.style.display = 'block';
     banner.style.background = 'var(--danger-bg)';
     banner.style.color = 'var(--danger-text)';
-    banner.textContent = 'Hay productos con cantidad de más. Revisa esas líneas antes de cerrar el pedido.';
+    banner.textContent = ret ? 'Hay productos que regresaron de más o que no estaban en la salida. Revisa esas líneas.' : 'Hay productos con cantidad de más. Revisa esas líneas antes de cerrar el pedido.';
   } else if(pending === 0 && total > 0){
     banner.style.display = 'block';
     banner.style.background = 'var(--success-bg)';
     banner.style.color = 'var(--success-text)';
-    banner.textContent = 'Pedido completo y verificado. Listo para despacho.';
+    banner.textContent = ret ? 'Regresó todo lo que salió.' : 'Pedido completo y verificado. Listo para despacho.';
   } else {
     banner.style.display = 'none';
   }
@@ -1605,7 +1937,10 @@ function showUnknownCodeUI(code, presetQty){
   const qty = presetQty || 1;
 
   const known = productCatalog[code];
-  const pending = pickItems.filter(i => i.picked < i.qty);
+  // V2.11: la lista va por posición (puede haber códigos repetidos) y nunca ofrece las líneas
+  // «sin código». En la salida libre se ofrecen todas las líneas (no hay «pendientes»).
+  const pending = pickItems.map((i, idx) => ({ i: i, idx: idx }))
+    .filter(x => x.i.code !== SIN_CODIGO && (salidaLibre || x.i.picked < x.i.qty));
   let html = '';
 
   if(known){
@@ -1622,13 +1957,13 @@ function showUnknownCodeUI(code, presetQty){
   }
 
   if(pending.length > 0){
-    const optionsHtml = pending.map(i =>
-      '<option value="' + escapeAttr(i.code) + '">' + escapeAttr(i.code) + ' - ' + escapeAttr(i.name) + '</option>'
+    const optionsHtml = pending.map(x =>
+      '<option value="' + x.idx + '">' + escapeAttr(x.i.code) + ' - ' + escapeAttr(x.i.name) + '</option>'
     ).join('');
     html += '<div style="margin-top:8px;">'
-      + '<label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">¿Es el código de barras de un producto de este pedido?</label>'
+      + '<label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">' + (salidaLibre ? '¿Es el código de barras de un producto de la lista?' : '¿Es el código de barras de un producto de este pedido?') + '</label>'
       + '<select id="link-barcode-select" style="margin-bottom:6px;">' + optionsHtml + '</select>'
-      + '<button type="button" data-action="link-barcode" data-code="' + escapeAttr(code) + '">Vincular y marcar como recibido</button>'
+      + '<button type="button" data-action="link-barcode" data-code="' + escapeAttr(code) + '">' + (salidaLibre ? 'Vincular y contar' : 'Vincular y marcar como recibido') + '</button>'
       + '</div>';
   }
 
@@ -1640,8 +1975,34 @@ function showUnknownCodeUI(code, presetQty){
       + '<button type="button" data-action="add-unknown" data-code="' + escapeAttr(code) + '">Agregar como producto nuevo</button>'
       + '</div>';
   }
+  // V2.11: siempre se puede descartar el escaneo sin agregar nada
+  html += '<button type="button" class="btn-secondary" data-action="skip-unknown" data-code="' + escapeAttr(code) + '" style="margin-top:8px;">No agregar</button>';
 
   document.getElementById('feedback-action').innerHTML = html;
+}
+
+// V2.11 (salida libre): producto del catálogo que no está en la lista. Se muestra con su foto,
+// marca y nombre, y solo se agrega al tocar «Agregar a lo que se lleva».
+function showLibreAddUI(catCode, scanned, qty){
+  if(feedbackTimeoutId){ clearTimeout(feedbackTimeoutId); feedbackTimeoutId = null; }
+  const p = productCatalog[catCode] || {};
+  const step = getPackSize(catCode);
+  const fb = document.getElementById('feedback-text');
+  const ret = isRetorno(); // V2.12: en el retorno, un producto que no salió se agrega como «devuelto»
+  fb.textContent = (ret ? 'Este producto no estaba en la salida. ¿Lo agregas como devuelto?' : 'No está en la lista. ¿Lo agregas a lo que se lleva?') + (qty > step ? ' (escaneado ' + Math.round(qty / step) + ' veces)' : '');
+  fb.style.color = 'var(--warning-text)';
+  const box = document.getElementById('feedback-thumb');
+  box.innerHTML = p.img ? thumbHtml(catCode, 72, true, p.name) : '';
+  hydrateThumbs(box);
+  document.getElementById('feedback-action').innerHTML = '<div class="inv-warn" style="margin-top:6px;">'
+    + '<div style="font-family:monospace; font-size:12px;">' + escapeAttr(catCode) + brandTag(catCode) + (step > 1 ? ' <span class="badge badge-warning">paq. ×' + step + '</span>' : '') + '</div>'
+    + '<div style="font-weight:600; color:var(--text); margin:2px 0;">' + escapeAttr(p.name || catCode) + '</div>'
+    + (p.description ? '<div class="muted" style="font-size:12px;">' + escapeAttr(p.description) + '</div>' : '')
+    + '<label style="font-size:12px; display:block; margin:8px 0 4px;">' + (ret ? 'Cantidad que regresó' : 'Cantidad que se lleva') + ' (sigue escaneando el mismo código para sumar)</label>'
+    + '<input type="number" min="1" value="' + qty + '" id="libre-add-qty" style="margin-bottom:6px;">'
+    + '<div class="inv-actions"><button type="button" class="btn-primary" data-action="libre-add" data-code="' + escapeAttr(catCode) + '" style="flex:1;">' + (ret ? 'Agregar como devuelto' : 'Agregar a lo que se lleva') + '</button>'
+    + '<button type="button" data-action="skip-unknown" data-code="' + escapeAttr(scanned) + '" style="flex:1;">No agregar</button></div>'
+    + '</div>';
 }
 
 function handleScan(raw){
@@ -1650,9 +2011,30 @@ function handleScan(raw){
 
   const mappedCode = barcodeIndex[rawCode];
   const lookupCode = mappedCode || rawCode;
-  const item = pickItems.find(i => i.code.toLowerCase() === lookupCode.toLowerCase());
+  const lc = lookupCode.toLowerCase();
+
+  // V2.11: el código de «productos sin código» no se escanea; sus líneas se cuentan a mano
+  if(lc === SIN_CODIGO){
+    pendingUnknownCode = null;
+    setFeedback('«' + SIN_CODIGO + '» es el código de los productos sin código: cuenta cada línea a mano con + o ✎.', 'var(--warning-text)');
+    return;
+  }
+
+  // Con códigos repetidos en la lista, el escaneo va a la primera línea que todavía falte
+  const matches = pickItems.filter(i => i.code.toLowerCase() === lc);
+  const item = salidaLibre ? matches[0] : (matches.find(i => i.picked < i.qty) || matches[0]);
 
   if(!item){
+    // V2.11 (salida libre): producto del catálogo fuera de la lista → se confirma antes de agregarlo
+    const catCode = (salidaLibre || isRetorno()) ? (mappedCode || findCatalogCode(rawCode)) : null; // V2.12: también en el retorno
+    if(catCode && catCode !== SIN_CODIGO){
+      const step = getPackSize(catCode);
+      const qtyInput = document.getElementById('libre-add-qty');
+      const qty = (rawCode === pendingUnknownCode && qtyInput) ? (parseInt(qtyInput.value) || 0) + step : step;
+      pendingUnknownCode = rawCode;
+      showLibreAddUI(catCode, rawCode, qty);
+      return;
+    }
     if(mappedCode){
       pendingUnknownCode = null;
       setFeedback('El código de barras "' + rawCode + '" está vinculado a "' + mappedCode + '", pero ese producto no está en este pedido.', 'var(--danger-text)');
@@ -1685,7 +2067,13 @@ function handleScan(raw){
   const scanBrand = (catalogInfo(item.code) || {}).brand;
   const itemLabel = (scanBrand ? '[' + scanBrand + '] ' : '') + item.name;
   item.picked += step;
-  if(item.picked > item.qty){
+  if(salidaLibre){
+    setFeedback('Agregado: ' + itemLabel + stepTxt + ' — van ' + item.picked + '.', 'var(--success-text)');
+  } else if(isRetorno()){ // V2.12
+    if(item.picked > item.qty) setFeedback((item.noSalida ? 'No estaba en la salida: ' : 'Regresó de más: ') + itemLabel + stepTxt + ' — salieron ' + item.qty + ', regresaron ' + item.picked + '.', 'var(--danger-text)');
+    else if(item.picked === item.qty) setFeedback('Regresó todo: ' + itemLabel + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--success-text)');
+    else setFeedback('Regresó: ' + itemLabel + stepTxt + ' (' + item.picked + ' de ' + item.qty + ').', 'var(--text-secondary)');
+  } else if(item.picked > item.qty){
     setFeedback('Exceso: ' + itemLabel + stepTxt + ' — pedidas ' + item.qty + ', van ' + item.picked + '.' + (step > 1 ? ' Si abriste un paquete, ajusta con ✎.' : ''), 'var(--danger-text)');
   } else if(item.picked === item.qty){
     setFeedback('Completo: ' + itemLabel + stepTxt + ' (' + item.picked + '/' + item.qty + ').', 'var(--success-text)');
@@ -1702,11 +2090,11 @@ document.getElementById('feedback-action').addEventListener('click', function(e)
   if(linkBtn){
     const barcode = linkBtn.getAttribute('data-code');
     const select = document.getElementById('link-barcode-select');
-    const targetCode = select ? select.value : null;
-    if(!targetCode) return;
+    const item = select ? pickItems[parseInt(select.value, 10)] : null; // V2.11: por posición
+    if(!item || item.code === SIN_CODIGO) return;
+    const targetCode = item.code;
     pendingUnknownCode = null;
     linkBarcodeToProduct(barcode, targetCode);
-    const item = pickItems.find(i => i.code === targetCode);
     if(item){
       upsertProduct(targetCode, item.name, '');
       saveProductCatalog();
@@ -1714,10 +2102,33 @@ document.getElementById('feedback-action').addEventListener('click', function(e)
       renderPickRows();
       updateStats();
       const nBarcodes = ((productCatalog[targetCode] || {}).barcodes || []).length;
-      setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + item.picked + '/' + item.qty + '). La próxima vez que escanees este código, ya lo va a reconocer solo.'
+      setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + (salidaLibre ? 'van ' + item.picked : item.picked + '/' + item.qty) + '). La próxima vez que escanees este código, ya lo va a reconocer solo.'
         + (nBarcodes > 1 ? ' ⚠ Ojo: este producto ahora tiene ' + nBarcodes + ' códigos de barras. Si no es correcto, quítalo en Catálogo.' : ''),
         nBarcodes > 1 ? 'var(--warning-text)' : 'var(--success-text)');
     }
+    return;
+  }
+
+  // V2.11: «No agregar» descarta el escaneo; «Agregar a lo que se lleva» (salida libre) lo suma a la lista
+  const skipBtn = e.target.closest('button[data-action="skip-unknown"]');
+  if(skipBtn){
+    pendingUnknownCode = null;
+    setFeedback('No se agregó «' + skipBtn.getAttribute('data-code') + '».', 'var(--text-secondary)');
+    return;
+  }
+  const libreBtn = e.target.closest('button[data-action="libre-add"]');
+  if(libreBtn){
+    const code = libreBtn.getAttribute('data-code');
+    const qtyInput = document.getElementById('libre-add-qty');
+    const qty = Math.max(1, parseInt(qtyInput ? qtyInput.value : 1) || 1);
+    const p = productCatalog[code] || {};
+    pendingUnknownCode = null;
+    if(isRetorno()) pickItems.push({ code: code, name: p.name || code, qty: 0, picked: qty, price: 0, noSalida: true }); // V2.12
+    else pickItems.push({ code: code, name: p.name || code, qty: qty, picked: qty, price: 0 });
+    renderPickRows();
+    updateStats();
+    setFeedback((isRetorno() ? 'Agregado como devuelto (no estaba en la salida): ' : 'Agregado a lo que se lleva: ') + (p.name || code) + ' (' + qty + ').', 'var(--success-text)');
+    showFeedbackThumb(code);
     return;
   }
 
@@ -1743,7 +2154,8 @@ document.getElementById('feedback-action').addEventListener('click', function(e)
     const name = nameInput ? nameInput.value.trim() : '';
     const qty = Math.max(1, parseInt(qtyInput ? qtyInput.value : 1) || 1);
     pendingUnknownCode = null;
-    pickItems.push({ code: code, name: name || '(sin nombre)', qty: qty, picked: qty, price: 0 });
+    if(isRetorno()) pickItems.push({ code: code, name: name || '(sin nombre)', qty: 0, picked: qty, price: 0, noSalida: true }); // V2.12
+    else pickItems.push({ code: code, name: name || '(sin nombre)', qty: qty, picked: qty, price: 0 });
     upsertProduct(code, name, '');
     saveProductCatalog();
     renderPickRows();
@@ -1858,6 +2270,7 @@ document.getElementById('btn-back-to-build').addEventListener('click', async fun
 });
 
 document.getElementById('btn-new-order').addEventListener('click', async function(){
+  libreLeave(); // V2.11: si era un conteo libre, queda guardado para «Continuar»
   await stopCamera();
   resetFeedback();
   pickItems = [];
@@ -1881,6 +2294,16 @@ function buildSummaryText(){
   const excess = pickItems.filter(i => i.picked > i.qty);
   const esRecepcion = tipoMovimiento === 'recepcion';
   const lines = [];
+  if(salidaLibre && !esRecepcion){ // V2.11: resumen de la salida libre (solo lo que tiene cantidad)
+    const llevados = pickItems.filter(i => i.picked > 0);
+    const obs = document.getElementById('quote-obs').value.trim();
+    lines.push('Salida de mercadería (conteo libre)' + (quoteNumber ? ' - ' + quoteNumber : ''));
+    if(client) lines.push('Cliente: ' + client);
+    if(obs) lines.push('Observación: ' + obs);
+    lines.push(llevados.length + ' producto(s), ' + llevados.reduce((s, i) => s + i.picked, 0) + ' unidad(es):');
+    llevados.forEach(i => lines.push('- ' + i.code + ' ' + i.name + ': ' + i.picked));
+    return lines.join('\n');
+  }
   lines.push((esRecepcion ? 'Verificación de recepción' : 'Verificación de despacho') + (quoteNumber ? ' - ' + quoteNumber : ''));
   if(quoteDate) lines.push('Fecha: ' + quoteDate);
   if(client) lines.push((esRecepcion ? 'Proveedor: ' : 'Cliente: ') + client);
@@ -1901,26 +2324,28 @@ function buildSummaryText(){
   return lines.join('\n');
 }
 
-function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, verifiedAtStr, verifiedBy, seller){
+function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, verifiedAtStr, verifiedBy, seller, opts){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const marginX = 15;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
+  if(opts && opts.libre) return buildLibrePdfDoc(doc, quoteNumber, quoteDate, client, items, verifiedAtStr, verifiedBy, seller, opts.obs);
 
   const esRecepcion = type === 'recepcion';
   const labelDoc = esRecepcion ? 'N. de orden/guia' : 'N. de cotizacion';
   const labelFecha = esRecepcion ? 'Fecha del documento' : 'Fecha de cotizacion';
   const labelContraparte = esRecepcion ? 'Proveedor' : 'Cliente';
-  const tituloDoc = esRecepcion ? 'Rios Performance - Verificacion de recepcion' : 'Rios Performance - Verificacion de despacho';
-  const colPedLabel = esRecepcion ? 'PED.' : 'PED.';
-  const colVerLabel = esRecepcion ? 'REC.' : 'VER.';
+  const ret = esRecepcion && opts && opts.retornoDe ? opts.retornoDe : null; // V2.12: retorno de una salida
+  const tituloDoc = ret ? 'Rios Performance - Retorno de mercadería' : esRecepcion ? 'Rios Performance - Verificacion de recepcion' : 'Rios Performance - Verificacion de despacho';
+  const colPedLabel = ret ? 'SALIÓ' : esRecepcion ? 'PED.' : 'PED.';
+  const colVerLabel = ret ? 'REGR.' : esRecepcion ? 'REC.' : 'VER.';
 
   const colCode = marginX;
   const colName = marginX + 30;
-  const colPed = marginX + 132;
-  const colVer = marginX + 150;
-  const colEstado = marginX + 167;
+  const colPed = marginX + (ret ? 122 : 132);   // V2.12: en el retorno el estado necesita más espacio
+  const colVer = marginX + (ret ? 137 : 150);
+  const colEstado = marginX + (ret ? 152 : 167);
 
   let y = 20;
 
@@ -1931,12 +2356,16 @@ function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, veri
     y += 7;
     doc.setFontSize(10);
     doc.setFont(undefined, 'normal');
-    doc.text(labelDoc + ': ' + (quoteNumber || '(sin numero)'), marginX, y);
+    doc.text((ret ? 'N. de retorno' : labelDoc) + ': ' + (quoteNumber || '(sin numero)'), marginX, y);
     y += 5;
-    doc.text(labelFecha + ': ' + (quoteDate || '(sin fecha)'), marginX, y);
+    doc.text((ret ? 'Fecha' : labelFecha) + ': ' + (quoteDate || '(sin fecha)'), marginX, y);
     y += 5;
-    doc.text(labelContraparte + ': ' + (client || '(sin dato)'), marginX, y);
+    doc.text((ret ? 'Cliente / destino' : labelContraparte) + ': ' + (client || '(sin dato)'), marginX, y);
     y += 5;
+    if(ret){
+      doc.text('Salida(s): ' + ret.map(r => (r.quoteNumber || '(sin numero)') + (r.libre ? ' (conteo libre)' : '')).join(', '), marginX, y);
+      y += 5;
+    }
     if(!esRecepcion){
       doc.text('Vendedor: ' + (seller || '(sin dato)'), marginX, y);
       y += 5;
@@ -1952,13 +2381,21 @@ function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, veri
     let resumen = complete + ' / ' + total + ' lineas completas';
     if(pending) resumen += '  -  ' + pending + ' pendientes';
     if(excess) resumen += '  -  ' + excess + ' con exceso';
+    if(ret){
+      const uS = items.reduce((s, i) => s + (i.qty || 0), 0), uR = items.reduce((s, i) => s + (i.picked || 0), 0);
+      const uV = items.reduce((s, i) => s + Math.max(0, (i.qty || 0) - (i.picked || 0)), 0);
+      resumen = 'Salió ' + uS + '  -  Regresó ' + uR + '  -  Vendido o faltante ' + uV + ' unidad(es)';
+    }
     doc.text(resumen, marginX, y);
     y += 6;
 
     const diffValue = items.reduce((sum, i) => sum + ((i.qty - i.picked) * (i.price || 0)), 0);
     doc.setFont(undefined, 'normal');
     doc.setFontSize(9);
-    if(Math.abs(diffValue) < 0.01){
+    if(ret){
+      const v = items.reduce((s, i) => s + Math.max(0, (i.qty || 0) - (i.picked || 0)) * (i.price || 0), 0);
+      doc.text('Valor vendido o faltante (precios de la cotizacion): S/ ' + v.toFixed(2), marginX, y);
+    } else if(Math.abs(diffValue) < 0.01){
       doc.text('Sin diferencias en valor.', marginX, y);
     } else if(diffValue > 0){
       doc.text('Valor pendiente: S/ ' + diffValue.toFixed(2), marginX, y);
@@ -1995,6 +2432,10 @@ function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, veri
     let estado = 'OK';
     if(item.picked > item.qty) estado = 'EXCESO';
     else if(item.picked < item.qty) estado = 'PENDIENTE';
+    if(ret){ // V2.12
+      estado = item.noSalida ? 'NO SALIÓ' : item.picked > item.qty ? 'DE MÁS ' + (item.picked - item.qty)
+        : item.picked < item.qty ? 'VEND./FALT. ' + (item.qty - item.picked) : 'REGRESÓ';
+    }
 
     doc.setFontSize(8);
     doc.text(String(item.code || '').substring(0, 24), colCode, y);
@@ -2011,6 +2452,82 @@ function buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, items, veri
   doc.setTextColor(130);
   doc.text('Generado con Verificador de pedidos - Rios Performance', marginX, y);
 
+  return doc;
+}
+
+// V2.11: PDF de la salida libre. Una sola columna CANT. (lo que se lleva); no hay pedida ni estado.
+function buildLibrePdfDoc(doc, quoteNumber, quoteDate, client, items, verifiedAtStr, verifiedBy, seller, obs){
+  const marginX = 15;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const colCode = marginX, colName = marginX + 42, colCant = pageWidth - marginX;
+  const nameWidth = colCant - 14 - colName;
+  let y = 20;
+
+  doc.setFontSize(15);
+  doc.setFont(undefined, 'bold');
+  doc.text('Rios Performance - Salida de mercadería (conteo libre)', marginX, y);
+  y += 7;
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'normal');
+  doc.text('N. de cotizacion: ' + (quoteNumber || '(sin numero)') + '   -   Fecha de cotizacion: ' + (quoteDate || '(sin fecha)'), marginX, y); y += 5;
+  doc.text('Cliente: ' + (client || '(sin dato)'), marginX, y); y += 5;
+  doc.text('Vendedor: ' + (seller || '(sin dato)'), marginX, y); y += 5;
+  if(obs){
+    doc.splitTextToSize('Observación: ' + obs, pageWidth - 2 * marginX).forEach(l => { doc.text(l, marginX, y); y += 5; });
+  }
+  doc.text('Contado el: ' + verifiedAtStr + '  -  Contado por: ' + (verifiedBy || '(sin nombre)'), marginX, y);
+  y += 7;
+  const units = items.reduce((s, i) => s + (i.picked || 0), 0);
+  const value = items.reduce((s, i) => s + (i.picked || 0) * (i.price || 0), 0);
+  doc.setFont(undefined, 'bold');
+  doc.text(items.length + ' producto(s)  -  ' + units + ' unidad(es)', marginX, y);
+  y += 6;
+  if(value >= 0.01){
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+    doc.text('Valor referencial (precios de la cotizacion): S/ ' + value.toFixed(2), marginX, y);
+    y += 7;
+  } else {
+    y += 1;
+  }
+
+  function header(){
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'bold');
+    doc.text('CODIGO', colCode, y);
+    doc.text('PRODUCTO', colName, y);
+    doc.text('CANT.', colCant, y, { align: 'right' });
+    y += 2;
+    doc.setLineWidth(0.2);
+    doc.line(marginX, y, pageWidth - marginX, y);
+    y += 5;
+    doc.setFont(undefined, 'normal');
+  }
+  header();
+  items.forEach(item => {
+    if(y > pageHeight - 20){ doc.addPage(); y = 20; header(); }
+    doc.setFontSize(8);
+    doc.text(String(item.code || '').substring(0, 26), colCode, y);
+    doc.text(doc.splitTextToSize(String(item.name || ''), nameWidth)[0] || '', colName, y);
+    doc.setFont(undefined, 'bold');
+    doc.text(String(item.picked), colCant, y, { align: 'right' });
+    doc.setFont(undefined, 'normal');
+    y += 5.5;
+  });
+  y += 1;
+  doc.setLineWidth(0.2);
+  doc.line(marginX, y - 4, pageWidth - marginX, y - 4);
+  doc.setFontSize(9);
+  doc.setFont(undefined, 'bold');
+  doc.text('TOTAL UNIDADES', colName, y);
+  doc.text(String(units), colCant, y, { align: 'right' });
+  y += 9;
+  if(y > pageHeight - 15){ doc.addPage(); y = 20; }
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(130);
+  doc.text('Generado con Verificador de pedidos - Rios Performance', marginX, y);
   return doc;
 }
 
@@ -2048,15 +2565,26 @@ async function generateMovimientoPdf(){
   const verifiedAt = Date.now();
   const verifiedAtDate = new Date(verifiedAt);
   const verifiedAtStr = verifiedAtDate.toLocaleDateString('es-PE') + ' ' + verifiedAtDate.toLocaleTimeString('es-PE');
-  const itemsSnapshot = pickItems.map(i => ({ code: i.code, name: i.name, qty: i.qty, picked: i.picked, price: i.price || 0 }));
   const type = tipoMovimiento;
+  const libre = salidaLibre && type === 'despacho';
+  const obs = libre ? document.getElementById('quote-obs').value.trim() : '';
+  // V2.11: en la salida libre los productos en 0 no se guardan, y la cantidad pedida se
+  // iguala a la llevada (así el PDF, el Excel y las métricas no muestran diferencias falsas).
+  const itemsSnapshot = pickItems
+    .filter(i => !libre || i.picked > 0)
+    .map(i => { const o = { code: i.code, name: i.name, qty: libre ? i.picked : i.qty, picked: i.picked, price: i.price || 0 }; if(i.noSalida) o.noSalida = true; return o; });
+  const retorno = type === 'recepcion' && retornoDe ? retornoDe.slice() : null; // V2.12
+  if(libre && itemsSnapshot.length === 0){
+    status.textContent = 'Todas las líneas están en 0: no hay nada que guardar. Cuenta lo que se lleva antes de generar el PDF.';
+    return;
+  }
 
-  const doc = buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, itemsSnapshot, verifiedAtStr, verifiedBy, seller);
+  const doc = buildMovimientoPdfDoc(type, quoteNumber, quoteDate, client, itemsSnapshot, verifiedAtStr, verifiedBy, seller, { libre: libre, obs: obs, retornoDe: retorno });
   const filenameRef = quoteNumber ? quoteNumber.replace(/[^a-z0-9]+/gi, '_').slice(0, 40) : 'pedido';
-  const filenamePrefix = type === 'recepcion' ? 'recepcion_' : 'despacho_';
+  const filenamePrefix = type === 'recepcion' ? (retorno ? 'retorno_' : 'recepcion_') : (libre ? 'salida_libre_' : 'despacho_');
   await shareOrDownloadPdf(doc, filenamePrefix + filenameRef + '.pdf');
 
-  addMovimiento({
+  const record = {
     id: 'm_' + verifiedAt + '_' + Math.random().toString(36).slice(2, 8),
     type: type,
     quoteNumber: quoteNumber,
@@ -2066,7 +2594,12 @@ async function generateMovimientoPdf(){
     verifiedBy: verifiedBy,
     verifiedAt: verifiedAt,
     items: itemsSnapshot
-  });
+  };
+  if(libre){ record.libre = true; record.obs = obs; }
+  if(retorno) record.retornoDe = retorno; // V2.12
+  addMovimiento(record);
+  if(libre || retorno){ libreDeleteDraft(); } // V2.11/V2.12: el borrador se borra solo al generar el PDF
+  libreLeave();
 
   // Cerrar el movimiento actual y volver a empezar, listo para el siguiente
   pickItems = [];
@@ -2080,7 +2613,10 @@ async function generateMovimientoPdf(){
   showScreen('build');
   showPage('contabilizacion');
   setTipoMovimiento('despacho');
-  const msg = type === 'recepcion' ? 'Recepción cerrada y guardada en Recepciones realizadas. Ya puedes armar el siguiente.' : 'Pedido cerrado y guardado en Despachos realizados. Ya puedes armar el siguiente.';
+  const msg = retorno ? 'Retorno cerrado y guardado en Recepciones realizadas. El Excel de Recepciones trae la hoja Salió-Regresó.'
+    : type === 'recepcion' ? 'Recepción cerrada y guardada en Recepciones realizadas. Ya puedes armar el siguiente.'
+    : libre ? 'Salida libre cerrada y guardada en Despachos realizados (' + itemsSnapshot.length + ' producto(s); las líneas en 0 no se guardaron).'
+    : 'Pedido cerrado y guardado en Despachos realizados. Ya puedes armar el siguiente.';
   document.getElementById('build-status').textContent = msg;
 }
 
@@ -2090,9 +2626,9 @@ async function redownloadMovimiento(id){
   if(!record) return;
   const verifiedAtDate = new Date(record.verifiedAt);
   const verifiedAtStr = verifiedAtDate.toLocaleDateString('es-PE') + ' ' + verifiedAtDate.toLocaleTimeString('es-PE');
-  const doc = buildMovimientoPdfDoc(record.type || 'despacho', record.quoteNumber, record.quoteDate, record.client, record.items, verifiedAtStr, record.verifiedBy, record.seller);
+  const doc = buildMovimientoPdfDoc(record.type || 'despacho', record.quoteNumber, record.quoteDate, record.client, record.items, verifiedAtStr, record.verifiedBy, record.seller, { libre: !!record.libre, obs: record.obs || '', retornoDe: record.retornoDe || null });
   const filenameRef = record.quoteNumber ? record.quoteNumber.replace(/[^a-z0-9]+/gi, '_').slice(0, 40) : 'pedido';
-  const filenamePrefix = record.type === 'recepcion' ? 'recepcion_' : 'despacho_';
+  const filenamePrefix = record.type === 'recepcion' ? (record.retornoDe ? 'retorno_' : 'recepcion_') : (record.libre ? 'salida_libre_' : 'despacho_');
   await shareOrDownloadPdf(doc, filenamePrefix + filenameRef + '.pdf');
 }
 
@@ -2145,7 +2681,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.10',
+    version: 'V2.12',
     exportedAt: Date.now(),
     inventario: { stock: invStock, activo: invAct, cerrados: invCer },
     productCatalog: productCatalog,
@@ -2206,6 +2742,7 @@ function importBackupFile(file){
           if(incoming.fromExcel) target.fromExcel = true;
           if(!Array.isArray(target.barcodes)) target.barcodes = [];
           (incoming.barcodes || []).forEach(bc => {
+            if(code === SIN_CODIGO) return; // V2.11: «sin código» nunca lleva códigos de barras
             const owner = barcodeIndex[bc];
             if(owner && owner !== code && productCatalog[owner]){ backupBarcodeConflicts.push(bc); return; }
             if(!target.barcodes.includes(bc)){
@@ -2292,6 +2829,7 @@ document.getElementById('import-backup-input').addEventListener('change', functi
 });
 
 document.getElementById('btn-inicio-nuevo-pedido').addEventListener('click', function(){
+  libreLeave(); // V2.11
   pickItems = [];
   document.getElementById('quote-number').value = '';
   document.getElementById('quote-date').value = '';
@@ -2320,23 +2858,34 @@ function renderMovimientoCard(d, labelContraparte){
   const complete = d.items.filter(i => i.picked === i.qty).length;
   const pending = d.items.filter(i => i.picked < i.qty).length;
   const excess = d.items.filter(i => i.picked > i.qty).length;
-  const badge = (pending === 0 && excess === 0)
+  const badge = d.libre ? '<span class="badge badge-success">Salida libre</span>' // V2.11
+    : d.retornoDe ? '<span class="badge badge-success">Retorno</span>' // V2.12
+    : (pending === 0 && excess === 0)
     ? '<span class="badge badge-success">Completo</span>'
     : '<span class="badge badge-warning">Con diferencias</span>';
   const diffValue = d.items.reduce((sum, i) => sum + ((i.qty - i.picked) * (i.price || 0)), 0);
   let valueLine = '';
   if(Math.abs(diffValue) >= 0.01){
-    valueLine = '<div class="muted">' + (diffValue > 0 ? 'Valor pendiente: S/ ' + diffValue.toFixed(2) : 'Valor en exceso: S/ ' + Math.abs(diffValue).toFixed(2)) + '</div>';
+    valueLine = '<div class="muted">' + (diffValue > 0 ? (d.retornoDe ? 'Valor vendido o faltante: S/ ' : 'Valor pendiente: S/ ') + diffValue.toFixed(2) : 'Valor en exceso: S/ ' + Math.abs(diffValue).toFixed(2)) + '</div>';
   }
   const detailRows = d.items.map(i =>
-    '<div class="detail-row"><span>' + escapeAttr(i.code) + ' - ' + escapeAttr(i.name || '') + '</span><span>' + i.picked + '/' + i.qty + '</span></div>'
+    '<div class="detail-row"><span>' + escapeAttr(i.code) + ' - ' + escapeAttr(i.name || '') + '</span><span>' + (d.libre ? i.picked : i.picked + '/' + i.qty) + '</span></div>'
   ).join('');
+  const units = d.items.reduce((s, i) => s + (i.picked || 0), 0);
+  let linesTxt = d.libre ? total + ' producto(s) · ' + units + ' unidad(es)' : complete + '/' + total + ' líneas completas';
+  if(d.retornoDe){ // V2.12
+    const uS = d.items.reduce((s, i) => s + (i.qty || 0), 0);
+    const uV = d.items.reduce((s, i) => s + Math.max(0, (i.qty || 0) - (i.picked || 0)), 0);
+    linesTxt = 'Salió ' + uS + ' · Regresó ' + units + ' · Vendido o faltante ' + uV + ' unidad(es)'
+      + '<br>De la(s) salida(s): ' + d.retornoDe.map(r => escapeAttr(r.quoteNumber || '(sin número)')).join(', ');
+  }
   return '<div class="despacho-card" data-id="' + escapeAttr(d.id) + '">'
     + '<div class="title">' + escapeAttr(d.quoteNumber || '(sin número)') + ' ' + badge + '</div>'
-    + '<div class="muted">' + labelContraparte + ': ' + escapeAttr(d.client || '(sin dato)') + '</div>'
+    + '<div class="muted">' + (d.retornoDe ? 'Cliente / destino' : labelContraparte) + ': ' + escapeAttr(d.client || '(sin dato)') + '</div>'
     + (d.type !== 'recepcion' && d.seller ? '<div class="muted">Vendedor: ' + escapeAttr(d.seller) + '</div>' : '')
-    + '<div class="muted">Verificado: ' + fechaStr + (d.verifiedBy ? ' - por ' + escapeAttr(d.verifiedBy) : '') + '</div>'
-    + '<div class="muted">' + complete + '/' + total + ' líneas completas</div>'
+    + (d.libre && d.obs ? '<div class="muted">Observación: ' + escapeAttr(d.obs) + '</div>' : '')
+    + '<div class="muted">' + (d.libre ? 'Contado' : 'Verificado') + ': ' + fechaStr + (d.verifiedBy ? ' - por ' + escapeAttr(d.verifiedBy) : '') + '</div>'
+    + '<div class="muted">' + linesTxt + '</div>'
     + valueLine
     + '<div class="row-flex" style="margin-top:8px;">'
       + '<button type="button" class="btn-secondary" data-action="toggle-detail" style="flex:1;">Ver detalle</button>'
@@ -2350,7 +2899,8 @@ function renderMovimientoCard(d, labelContraparte){
 function filterMovimientos(list, query){
   if(!query) return list;
   const q = query.toLowerCase();
-  return list.filter(d => (d.client || '').toLowerCase().includes(q) || (d.quoteNumber || '').toLowerCase().includes(q) || (d.seller || '').toLowerCase().includes(q));
+  return list.filter(d => (d.client || '').toLowerCase().includes(q) || (d.quoteNumber || '').toLowerCase().includes(q) || (d.seller || '').toLowerCase().includes(q)
+    || (d.obs || '').toLowerCase().includes(q) || (d.libre && 'salida libre'.includes(q))); // V2.11
 }
 
 function renderDespachosList(){
@@ -2479,7 +3029,8 @@ function buildMovimientosExportData(list, isRecepcion){
     { header: 'Valor pedido S/', width: 13, fmt: MONEY },
     { header: 'Valor verificado S/', width: 14, fmt: MONEY },
     { header: 'Diferencia S/', width: 12, fmt: DIFF_MONEY },
-    { header: 'Estado', width: 19, estado: true }
+    { header: 'Estado', width: 19, estado: true },
+    { header: 'Observación', width: 36, onlyDespacho: true } // V2.11 (salida libre)
   ];
   const detailCols = [
     { header: 'Fecha verificación', width: 13, fmt: DATE },
@@ -2528,7 +3079,8 @@ function buildMovimientosExportData(list, isRecepcion){
     summaryRows.push([
       fecha, hora, d.quoteNumber || '', parseDocDate(d.quoteDate), d.client || '', d.seller || '', d.verifiedBy || '',
       items.length, ok, pend, exc, uPed, uVer, round2(vPed), round2(vVer), round2(vVer - vPed),
-      (pend === 0 && exc === 0) ? 'COMPLETO' : 'CON DIFERENCIAS'
+      d.libre ? 'SALIDA LIBRE' : (pend === 0 && exc === 0) ? 'COMPLETO' : 'CON DIFERENCIAS',
+      d.obs || ''
     ]);
   });
 
@@ -2540,17 +3092,55 @@ function buildMovimientosExportData(list, isRecepcion){
   };
   const sum = dropCols(summaryCols, summaryRows);
   const det = dropCols(detailCols, detailRows);
-  return {
-    sheets: [
-      { name: 'Resumen', cols: sum.cols, rows: sum.rows },
-      { name: 'Detalle', cols: det.cols, rows: det.rows }
-    ]
-  };
+  const sheets = [
+    { name: 'Resumen', cols: sum.cols, rows: sum.rows },
+    { name: 'Detalle', cols: det.cols, rows: det.rows }
+  ];
+  // V2.12: reporte Salió / Regresó / Vendido o faltante, una fila por producto de cada retorno
+  const retornos = isRecepcion ? sorted.filter(d => d.retornoDe) : [];
+  if(retornos.length){
+    const INT_NEG = '#,##0;[Red]-#,##0;0';
+    const cols = [
+      { header: 'Fecha verificación', width: 13, fmt: DATE },
+      { header: 'N° retorno', width: 22 },
+      { header: 'Salida(s)', width: 20 },
+      { header: 'Cliente / destino', width: 30 },
+      { header: 'Código', width: 22 },
+      { header: 'Marca', width: 14 },
+      { header: 'Descripción', width: 46 },
+      { header: 'Salió', width: 8, fmt: INT },
+      { header: 'Regresó', width: 9, fmt: INT },
+      { header: 'Vendido o faltante', width: 11, fmt: INT_NEG },
+      { header: 'Precio unit. S/', width: 12, fmt: MONEY },
+      { header: 'Valor vendido o faltante S/', width: 15, fmt: MONEY },
+      { header: 'Estado', width: 22, estado: true }
+    ];
+    const rows = [];
+    retornos.forEach(d => {
+      const salidas = d.retornoDe.map(r => r.quoteNumber || '(sin número)').join(', ');
+      (d.items || []).forEach(i => {
+        const sal = i.qty || 0, reg = i.picked || 0, price = Number(i.price) || 0;
+        const catCode = findCatalogCode(i.code);
+        const estado = i.noSalida ? 'NO ESTABA EN LA SALIDA' : reg > sal ? 'REGRESÓ DE MÁS' : reg < sal ? 'VENDIDO O FALTANTE' : 'REGRESÓ TODO';
+        rows.push([excelLocalDate(d.verifiedAt), d.quoteNumber || '', salidas, d.client || '', i.code || '',
+          catCode ? (productCatalog[catCode].brand || '') : '', i.name || '',
+          sal, reg, sal - reg, round2(price), round2(Math.max(0, sal - reg) * price), estado]);
+      });
+    });
+    sheets.push({ name: 'Salió-Regresó', cols: cols, rows: rows });
+  }
+  return { sheets: sheets };
 }
 
 const ESTADO_STYLE = {
   'OK':              { fill: 'FFEAF3DE', font: 'FF27500A' },
   'COMPLETO':        { fill: 'FFEAF3DE', font: 'FF27500A' },
+  'SALIDA LIBRE':    { fill: 'FFE6F1FB', font: 'FF0C447C' }, // V2.11
+  // V2.12: retorno de una salida
+  'REGRESÓ TODO':           { fill: 'FFEAF3DE', font: 'FF27500A' },
+  'VENDIDO O FALTANTE':     { fill: 'FFFAEEDA', font: 'FF633806' },
+  'REGRESÓ DE MÁS':         { fill: 'FFFCEBEB', font: 'FF791F1F' },
+  'NO ESTABA EN LA SALIDA': { fill: 'FFFCEBEB', font: 'FF791F1F' },
   'PENDIENTE':       { fill: 'FFFAEEDA', font: 'FF633806' },
   'CON DIFERENCIAS': { fill: 'FFFAEEDA', font: 'FF633806' },
   'EXCESO':          { fill: 'FFFCEBEB', font: 'FF791F1F' },
@@ -2679,14 +3269,17 @@ function renderMetricas(){
   }
 
   const totalDespachos = despachos.length;
-  const despachosCompletos = despachos.filter(d => d.items.every(i => i.picked === i.qty)).length;
-  const pctDespachosCompletos = Math.round((despachosCompletos / totalDespachos) * 100);
+  // V2.11: las salidas libres no tienen cantidad pedida: no cuentan para «Pedidos sin
+  // diferencias», «Líneas exactas», el valor en diferencias ni el ranking (inflarían los números).
+  const verificados = despachos.filter(d => !d.libre);
+  const despachosCompletos = verificados.filter(d => d.items.every(i => i.picked === i.qty)).length;
+  const pctDespachosCompletos = verificados.length ? Math.round((despachosCompletos / verificados.length) * 100) : 0;
 
   let totalLineas = 0;
   let lineasExactas = 0;
   const problemMap = {};
 
-  despachos.forEach(d => {
+  verificados.forEach(d => {
     d.items.forEach(i => {
       totalLineas++;
       if(i.picked === i.qty){
@@ -2704,7 +3297,7 @@ function renderMetricas(){
   const despachosUltimos7 = despachos.filter(d => d.verifiedAt >= sevenDaysAgo).length;
 
   let valorTotalDiferencias = 0;
-  despachos.forEach(d => {
+  verificados.forEach(d => {
     d.items.forEach(i => {
       valorTotalDiferencias += Math.abs((i.qty - i.picked) * (i.price || 0));
     });
@@ -2727,6 +3320,8 @@ function renderMetricas(){
     + '<div class="stat-box"><div class="num" style="color:var(--danger-text); font-size:18px;">S/ ' + valorTotalDiferencias.toFixed(2) + '</div><div class="lbl">Valor total en diferencias</div></div>'
     + '<div class="stat-box"><div class="num">' + recepcionesTotales + '</div><div class="lbl">Recepciones registradas</div></div>'
   + '</div>';
+  const nLibres = totalDespachos - verificados.length; // V2.11
+  if(nLibres) html += '<p class="muted" style="margin:-6px 0 14px;">' + nLibres + ' salida(s) libre(s) cuentan en los totales, pero no en los porcentajes ni en el valor en diferencias.</p>';
 
   html += '<div class="card">'
     + '<h2>Productos con más diferencias</h2>';
@@ -3576,6 +4171,7 @@ function saveCatalogBarcode(code, scannedValue){
   const p = productCatalog[code];
   if(!p) return;
   if(!barcode) return fail('Escanea o escribe un código de barras.');
+  if(code === SIN_CODIGO) return fail('Este es el código de los productos sin código: no se le vinculan códigos de barras.'); // V2.11
   if((p.barcodes || []).includes(barcode)) return fail('Este producto ya tiene ese código de barras.');
   const owner = barcodeIndex[barcode];
   if(owner && owner !== code){
@@ -4309,6 +4905,7 @@ function invMsg(m, warn){ invUI.msg = ''; invUI.msgWarn = false; invToast(m, war
 function invSticky(m, warn){ invToast(''); invUI.msg = m; invUI.msgWarn = !!warn; }
 function invLink(code){
   const p = invUI.pend; if(!p || !productCatalog[code]) return;
+  if(code === SIN_CODIGO){ invMsg('Ese es el código de los productos sin código: no se le vinculan códigos de barras.', true); return; } // V2.11
   const pack = getPackSize(code);
   linkBarcodeToProduct(p.barcode, code);
   invAdd(code, p.n * pack);
@@ -5040,6 +5637,14 @@ $i('inv-stock-file').addEventListener('change', e => { if(e.target.files[0]) inv
   try{
     const r = repairTruncatedCodes();
     if(r.merged.length){ const el = $i('backup-status'); if(el) el.textContent = 'Se corrigieron ' + r.merged.length + ' código(s) mal leídos por versiones anteriores (' + r.merged.join(', ') + ').'; }
+  }catch(e){}
+})();
+// V2.11: el código de «productos sin código» no puede tener códigos de barras vinculados
+// (antes se le vinculó por error el de un limpiador Motul). Se quitan al abrir la app.
+(function(){
+  try{
+    const p = productCatalog[SIN_CODIGO];
+    if(p && (p.barcodes || []).length){ p.barcodes = []; saveProductCatalog(); rebuildBarcodeIndex(); }
   }catch(e){}
 })();
 renderCatalogStatus();
