@@ -196,7 +196,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.12</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.13</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -566,6 +566,7 @@ function setTipoMovimiento(tipo){
     document.getElementById('upload-card-title').textContent = 'Cargar la cotización';
     document.getElementById('upload-card-hint').textContent = 'Sube el PDF de la cotización: se lee solo. Revisa siempre el resultado antes de continuar.';
     document.getElementById('photo-trigger-btn').textContent = 'Subir cotización (PDF)';
+    document.getElementById('photo-input').setAttribute('accept', 'application/pdf,.pdf'); // V2.13
     document.getElementById('btn-generate-pdf').textContent = 'Generar PDF de despacho';
   } else {
     document.getElementById('quote-card-title').textContent = 'Datos de la recepción';
@@ -573,10 +574,11 @@ function setTipoMovimiento(tipo){
     document.getElementById('quote-date-label').textContent = 'Fecha del documento';
     document.getElementById('quote-client-label').textContent = 'Proveedor';
     document.getElementById('quote-seller-wrap').classList.add('hidden');
-    document.getElementById('quote-card-hint').textContent = 'Si subes el PDF abajo, intentamos llenar estos campos solos. Igual puedes corregirlos a mano.';
-    document.getElementById('upload-card-title').textContent = 'Cargar la orden de compra / guía';
-    document.getElementById('upload-card-hint').textContent = 'Sube el PDF de la guía u orden de compra del proveedor: se lee solo. Revisa siempre el resultado antes de continuar.';
-    document.getElementById('photo-trigger-btn').textContent = 'Subir guía u orden (PDF)';
+    document.getElementById('quote-card-hint').textContent = 'Si subes el Excel abajo, llenamos la fecha, la marca/proveedor y una referencia con el nombre del archivo. Corrígelos a mano si hace falta.';
+    document.getElementById('upload-card-title').textContent = 'Cargar la lista de ingreso (Excel)';
+    document.getElementById('upload-card-hint').textContent = 'Sube el Excel de la lista de ingreso que entrega administración (columnas CODIGO, DESCRIPCION y CANTIDAD): se lee solo. Revisa siempre el resultado antes de continuar.';
+    document.getElementById('photo-trigger-btn').textContent = 'Subir lista de ingreso (Excel)';
+    document.getElementById('photo-input').setAttribute('accept', '.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv'); // V2.13
     document.getElementById('btn-generate-pdf').textContent = 'Generar PDF de recepción';
   }
   // V2.11: la salida libre es un modo del despacho
@@ -1640,6 +1642,7 @@ function buildPdfWarningsHtml(w, notInCatalog){
 }
 
 async function processCotizacionFile(file){
+  if(tipoMovimiento === 'recepcion') return processRecepcionExcel(file); // V2.13: la recepción se carga desde Excel
   const status = document.getElementById('photo-status');
 
   const isPdf = file.type === 'application/pdf'
@@ -1696,6 +1699,117 @@ async function processCotizacionFile(file){
 
   // V2.10: solo se leen PDFs (la lectura de fotos con IA solo funcionaba dentro de Claude.ai)
   status.textContent = 'Este archivo no es un PDF. Sube el PDF o agrega los productos a mano abajo.';
+}
+
+
+// --- V2.13: Recepción desde la lista de ingreso en Excel (la que entrega administración) ---
+// Acepta .xlsx / .xls / .csv con una fila de títulos (en cualquiera de las primeras 20 filas) que tenga
+// CODIGO y CANTIDAD (también CANT / QTY). La descripción puede llamarse DESCRIPCION o DESCRIPTION; MARCA es opcional.
+// Las demás columnas (UN, X MAYOR, PUBLICO, totales) se ignoran. Códigos repetidos se suman.
+function detectIngresoColumns(headerRow){
+  const cols = { code: -1, name: -1, qty: -1, brand: -1 };
+  headerRow.map(normHeader).forEach((n, idx) => {
+    if(!n) return;
+    if(cols.code < 0 && /^(CODIGO|COD\.?|CODIGO PRODUCTO|CODIGO DEL PRODUCTO|SKU|CODE)$/.test(n)) cols.code = idx;
+    else if(cols.name < 0 && /^(DESCRIPCION|DESCRIPTION|NOMBRE|NOMBRE PRODUCTO|NOMBRE DEL PRODUCTO|PRODUCTO|ARTICULO)$/.test(n)) cols.name = idx;
+    else if(cols.qty < 0 && /^(CANTIDAD|CANT\.?|QTY|QUANTITY|UNIDADES)$/.test(n)) cols.qty = idx;
+    else if(cols.brand < 0 && /^(MARCA|BRAND)$/.test(n)) cols.brand = idx;
+  });
+  return cols;
+}
+function findIngresoTable(workbook){
+  const valid = [];
+  workbook.SheetNames.forEach(sheetName => {
+    const sheet = workbook.Sheets[sheetName];
+    if(!sheet || !sheet['!ref']) return;
+    const range = XLSX.utils.decode_range(sheet['!ref']);
+    const last = Math.min(range.e.r, range.s.r + 20);
+    for(let r = range.s.r; r <= last; r++){
+      const header = [];
+      for(let c = range.s.c; c <= range.e.c; c++) header[c] = excelCellText(sheet, r, c);
+      const cols = detectIngresoColumns(header);
+      if(cols.code >= 0 && cols.qty >= 0){ valid.push({ sheetName, sheet, headerRow: r, cols, range }); break; }
+    }
+  });
+  return valid.length ? { table: valid[0], others: valid.slice(1).map(v => v.sheetName) } : null;
+}
+function ingresoQty(sheet, r, c){
+  const cell = sheet[XLSX.utils.encode_cell({ r: r, c: c })];
+  if(!cell || cell.v === undefined || cell.v === null || cell.v === '') return NaN;
+  return typeof cell.v === 'number' ? cell.v : parseFloat(String(cell.v).replace(/\s/g, '').replace(',', '.'));
+}
+async function processRecepcionExcel(file){
+  const status = document.getElementById('photo-status');
+  if(!/\.(xlsx|xls|csv)$/i.test(file.name || '')){
+    status.textContent = 'Este archivo no es un Excel. Sube la lista de ingreso en .xlsx, .xls o .csv, o agrega los productos a mano abajo.';
+    return;
+  }
+  status.textContent = 'Leyendo el Excel...';
+  await new Promise(r => setTimeout(r, 30));
+  try{
+    if(typeof XLSX === 'undefined') throw new Error('No se pudo cargar el lector de Excel (revisa tu conexión a internet)');
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellFormula: false, cellStyles: false });
+    const found = findIngresoTable(wb);
+    if(!found){
+      status.textContent = 'No encontré las columnas CODIGO y CANTIDAD en el Excel (los títulos deben estar en las primeras filas). No se agregó nada.';
+      return;
+    }
+    const { sheet, cols, headerRow, range, sheetName } = found.table;
+    const map = new Map();
+    const unread = [], noQty = [], noInt = [], dups = [];
+    const brands = [];
+    for(let r = headerRow + 1; r <= range.e.r; r++){
+      const code = excelCellText(sheet, r, cols.code);
+      const name = (cols.name >= 0 ? excelCellText(sheet, r, cols.name) : '').replace(/\s+/g, ' ').trim();
+      const brand = cols.brand >= 0 ? excelCellText(sheet, r, cols.brand).replace(/\s+/g, ' ').trim() : '';
+      let q = ingresoQty(sheet, r, cols.qty);
+      if(!code && !name && isNaN(q)) continue; // fila vacía
+      if(!code){ unread.push('fila ' + (r + 1) + ': ' + (name || '(sin nombre)') + (isNaN(q) ? '' : ' · ' + q)); continue; }
+      if(isNaN(q) || q <= 0){ noQty.push(code); continue; }
+      if(!Number.isInteger(q)){ noInt.push(code + ' (' + q + ')'); q = Math.round(q); if(q < 1) q = 1; }
+      if(brand && !brands.includes(brand)) brands.push(brand);
+      const catCode = findCatalogCode(code);
+      const item = { code: catCode || code, name: name || (catCode && productCatalog[catCode].name) || '(sin nombre)', qty: q, picked: 0, price: 0 };
+      const k = retornoKey(item);
+      if(map.has(k)){ map.get(k).qty += q; dups.push(code); }
+      else map.set(k, item);
+    }
+    const items = Array.from(map.values());
+    if(items.length === 0){
+      status.innerHTML = 'No se encontró ningún producto con código y cantidad en la hoja «' + escapeAttr(sheetName) + '».'
+        + (noQty.length ? '<br>Códigos sin cantidad: ' + noQty.slice(0, 10).map(escapeAttr).join(', ') : '');
+      return;
+    }
+    const catalogLoaded = Object.keys(productCatalog).length > 0;
+    const notInCatalog = [];
+    items.forEach(it => {
+      pickItems.push(it);
+      const cc = findCatalogCode(it.code);
+      if(cc) upsertProduct(cc, it.name, '');
+      else if(catalogLoaded) notInCatalog.push(it.code);
+    });
+    saveProductCatalog();
+    // Datos de la cabecera (solo si están vacíos)
+    const t = new Date(), p2 = x => String(x).padStart(2, '0');
+    const numIn = document.getElementById('quote-number'), dateIn = document.getElementById('quote-date'), cliIn = document.getElementById('quote-client');
+    if(!numIn.value.trim()) numIn.value = String(file.name || '').replace(/\.(xlsx|xls|csv)$/i, '').slice(0, 60);
+    if(!dateIn.value.trim()) dateIn.value = p2(t.getDate()) + '/' + p2(t.getMonth() + 1) + '/' + t.getFullYear();
+    if(!cliIn.value.trim() && brands.length) cliIn.value = brands.slice(0, 4).join(' / ');
+    renderBuildList();
+    renderCatalogStatus();
+    const units = items.reduce((s, i) => s + i.qty, 0);
+    const box = h => '<div style="background:var(--warning-bg); color:var(--warning-text); border:1px solid var(--warning-border); border-radius:8px; padding:8px 10px; margin-top:8px; font-size:13px;">' + h + '</div>';
+    let out = '<span style="color:var(--success-text); font-weight:600;">✓ Se cargaron ' + items.length + ' producto(s), ' + units + ' unidad(es) desde la hoja «' + escapeAttr(sheetName) + '».</span>';
+    if(found.others.length) out += '<div class="muted" style="margin-top:4px;">El archivo tiene otras hojas con el mismo formato (' + found.others.map(escapeAttr).join(', ') + '): no se usaron, para no contar dos veces.</div>';
+    if(unread.length) out += box('⚠ <b>' + unread.length + ' fila(s) con cantidad pero sin código.</b> Agrégalas a mano:<br>' + unread.slice(0, 10).map(x => '• ' + escapeAttr(x)).join('<br>'));
+    if(noQty.length) out += box('⚠ <b>' + noQty.length + ' código(s) sin cantidad o con cantidad 0 (no se cargaron):</b> ' + noQty.slice(0, 15).map(escapeAttr).join(', ') + (noQty.length > 15 ? '…' : ''));
+    if(noInt.length) out += box('⚠ <b>Cantidades con decimales (se redondearon):</b> ' + noInt.slice(0, 10).map(escapeAttr).join(', '));
+    if(dups.length) out += box('ℹ <b>' + dups.length + ' código(s) repetido(s) en el Excel:</b> se sumaron sus cantidades (' + dups.slice(0, 10).map(escapeAttr).join(', ') + ').');
+    if(notInCatalog.length) out += box('⚠ <b>' + notInCatalog.length + ' código(s) no están en el catálogo:</b> ' + notInCatalog.slice(0, 15).map(escapeAttr).join(', ') + (notInCatalog.length > 15 ? '…' : '') + '. Pueden ser productos nuevos: al escanear su código de barras podrás vincularlo (están marcados en amarillo en la lista).');
+    status.innerHTML = out;
+  }catch(err){
+    status.textContent = 'No se pudo leer el Excel (' + (err.message || err) + '). Agrega los productos manualmente abajo.';
+  }
 }
 
 document.getElementById('photo-trigger-btn').addEventListener('click', function(){
@@ -2681,7 +2795,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.12',
+    version: 'V2.13',
     exportedAt: Date.now(),
     inventario: { stock: invStock, activo: invAct, cerrados: invCer },
     productCatalog: productCatalog,
