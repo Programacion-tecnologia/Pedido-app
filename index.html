@@ -48,7 +48,7 @@ button:active{ transform:scale(0.98); }
 .pick-row .code{ font-family:monospace; font-size:11px; color:var(--text-secondary); }
 .pick-row .name{ font-size:13px; line-height:1.3; white-space:normal; overflow-wrap:anywhere; margin-top:2px; }
 .brand-tag{ display:inline-block; font-family:inherit; font-size:10px; font-weight:700; letter-spacing:0.02em; padding:1px 6px; border-radius:6px; background:var(--accent-bg, #E6F1FB); color:var(--accent-text, #0C447C); margin-left:6px; vertical-align:1px; }
-.pick-row .left{ min-width:0; flex:1; }
+.pick-row .left{ min-width:0; flex:1; cursor:pointer; }
 .pick-row .right{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .pick-row .count{ font-size:14px; font-weight:600; min-width:38px; text-align:right; }
 .minus-btn{ width:28px; height:28px; padding:0; border-radius:6px; }
@@ -196,7 +196,7 @@ img.thumb[data-view-img]{ cursor:zoom-in; }
 <div id="top-bar">
   <button type="button" id="sidebar-toggle-btn" aria-label="Abrir menú">☰</button>
   <div>
-    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.13</span></h1>
+    <h1 style="margin:0;">Verificador de pedidos <span class="muted" style="font-size:12px; font-weight:400;">V2.14</span></h1>
     <p class="muted" style="margin:2px 0 0;">Rios Performance - almacén</p>
   </div>
 </div>
@@ -1134,6 +1134,7 @@ function jsq(s){
 function showScreen(name){
   document.getElementById('screen-build').classList.toggle('hidden', name !== 'build');
   document.getElementById('screen-pick').classList.toggle('hidden', name !== 'pick');
+  pickSelIdx = null; pickLinkAll = false; // V2.14
   libreSave(); // V2.11: el borrador recuerda en qué pantalla se quedó
 }
 
@@ -1872,6 +1873,8 @@ function rowStyle(item){
 // puede traer varias líneas con el mismo código (ej. el de «productos sin código») y antes
 // los botones de cualquiera de ellas cambiaban siempre la primera.
 let pickEditIdx = null; // línea con el editor de cantidad abierto
+let pickSelIdx = null;  // V2.14: línea elegida para vincularle el próximo código de barras que no se reconozca
+let pickLinkAll = false; // V2.14: en la lista de vincular, mostrar también los productos que ya tienen código de barras
 
 // Unidades que suma cada escaneo de este producto (productos que vienen en paquetes de 5, 10, etc.)
 function getPackSize(code){
@@ -1891,6 +1894,8 @@ function renderPickRows(){
     const manualTag = (sinCodigo ? ' <span class="badge badge-warning" style="margin-left:4px;">sin código · contar a mano</span>' : '')
       + (item.noSalida ? ' <span class="badge badge-warning" style="margin-left:4px;">no estaba en la salida</span>' : ''); // V2.12
     const c = escapeAttr(item.code);
+    const isSel = pickSelIdx === idx; // V2.14
+    const selTag = isSel ? ' <span class="badge" style="background:var(--accent); color:#fff; margin-left:4px;">Elegido</span>' : '';
     let editor = '';
     if(pickEditIdx === idx){
       editor = '<div style="border:1px solid var(--border); background:var(--card); border-radius:10px; padding:10px 12px; margin:-2px 0 6px;">'
@@ -1902,10 +1907,10 @@ function renderPickRows(){
         + '<button type="button" data-act="close-edit" data-idx="' + idx + '" style="flex:1;">Cerrar</button></div></div>';
     }
     const countTxt = salidaLibre ? String(item.picked) : item.picked + '/' + item.qty;
-    return '<div class="pick-wrap">'
-      + '<div class="pick-row" style="border-color:'+s.border+'; background:'+s.bg+';">'
+    return '<div class="pick-wrap" data-idx="' + idx + '">'
+      + '<div class="pick-row" style="border-color:'+(isSel ? 'var(--accent)' : s.border)+'; background:'+s.bg+';' + (isSel ? ' box-shadow:0 0 0 2px var(--accent);' : '') + '">'
       + (catalogHasPhotos ? thumbHtml(item.code, 48, true, item.name) : '')
-      + '<div class="left"><div class="code">'+c+brandTag(item.code)+packTag+manualTag+'</div><div class="name">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
+      + '<div class="left"><div class="code">'+c+brandTag(item.code)+packTag+manualTag+selTag+'</div><div class="name">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
       + '<div class="right">'
         + '<span class="count" style="color:'+s.count+';">'+countTxt+'</span>'
         + '<button type="button" class="minus-btn" data-act="minus" data-idx="'+idx+'" aria-label="Quitar ' + pack + '" title="Quitar ' + pack + '">-</button>'
@@ -1922,7 +1927,23 @@ function renderPickRows(){
 
 document.getElementById('pick-rows').addEventListener('click', function(e){
   const btn = e.target.closest('button[data-act]');
-  if(!btn) return;
+  if(!btn){
+    // V2.14: tocar la tarjeta de un producto lo elige (otra vez lo quita). El próximo código de barras
+    // desconocido que se escanee se puede vincular a ese producto con un solo toque.
+    const rowEl = e.target.closest('.pick-row');
+    const wrap = rowEl ? rowEl.closest('.pick-wrap') : null;
+    if(!wrap) return;
+    const sidx = parseInt(wrap.getAttribute('data-idx'), 10), sitem = pickItems[sidx];
+    if(!sitem) return;
+    if(sitem.code === SIN_CODIGO){ setFeedback('Las líneas «sin código» se cuentan a mano con + o ✎: no llevan código de barras.', 'var(--warning-text)'); return; }
+    if(pickSelIdx === sidx){ pickSelIdx = null; renderPickRows(); setFeedback('Se quitó la selección.', 'var(--text-secondary)'); return; }
+    pickSelIdx = sidx;
+    renderPickRows();
+    const has = ((catalogInfo(sitem.code) || {}).barcodes || []).length;
+    setFeedback('Elegido: ' + sitem.name + (has ? ' (ya tiene ' + has + ' código(s) de barras)' : '') + '. Escanea su código de barras para vincularlo.', 'var(--accent)', false);
+    showFeedbackThumb(sitem.code);
+    return;
+  }
   const idx = parseInt(btn.getAttribute('data-idx'), 10);
   const item = pickItems[idx];
   if(!item) return;
@@ -2051,11 +2072,17 @@ function showUnknownCodeUI(code, presetQty){
   const qty = presetQty || 1;
 
   const known = productCatalog[code];
-  // V2.11: la lista va por posición (puede haber códigos repetidos) y nunca ofrece las líneas
-  // «sin código». En la salida libre se ofrecen todas las líneas (no hay «pendientes»).
-  const pending = pickItems.map((i, idx) => ({ i: i, idx: idx }))
-    .filter(x => x.i.code !== SIN_CODIGO && (salidaLibre || x.i.picked < x.i.qty));
+  // V2.11: la lista va por posición (puede haber códigos repetidos) y nunca ofrece las líneas «sin código».
+  // V2.14: la lista solo trae los productos que AÚN NO tienen código de barras (al vincular uno, sale de la lista);
+  // «Ver todos» muestra también los que ya tienen. Si todos ya tienen, se muestran todos.
+  const hasBc = i => ((catalogInfo(i.code) || {}).barcodes || []).length > 0;
+  const allLines = pickItems.map((i, idx) => ({ i: i, idx: idx })).filter(x => x.i.code !== SIN_CODIGO);
+  const noBc = allLines.filter(x => !hasBc(x.i));
+  const useAll = pickLinkAll || noBc.length === 0;
+  const pending = useAll ? allLines : noBc;
   let html = '';
+  const selItem = pickSelIdx !== null ? pickItems[pickSelIdx] : null;
+  const selOk = selItem && selItem.code !== SIN_CODIGO;
 
   if(known){
     fb.textContent = 'Código no encontrado en este pedido: "' + code + '". Ya está en tu catálogo como "' + (known.name || code) + '".' + (qty > 1 ? ' (escaneado ' + qty + ' veces)' : '');
@@ -2070,14 +2097,28 @@ function showUnknownCodeUI(code, presetQty){
     fb.style.color = 'var(--danger-text)';
   }
 
+  if(selOk){
+    const sInfo = catalogInfo(selItem.code) || {};
+    const sHas = (sInfo.barcodes || []).length;
+    html += '<div class="inv-warn" style="margin-top:8px;">'
+      + '<div style="font-size:11px; font-weight:600;">PRODUCTO ELEGIDO</div>'
+      + '<div style="font-family:monospace; font-size:12px;">' + escapeAttr(selItem.code) + brandTag(selItem.code) + '</div>'
+      + '<div style="font-weight:600; color:var(--text); margin:2px 0 6px;">' + escapeAttr(selItem.name || selItem.code) + '</div>'
+      + (sHas ? '<div style="font-size:12px; margin-bottom:6px;">⚠ Ya tiene ' + sHas + ' código(s) de barras. Si lo vinculas, tendrá ' + (sHas + 1) + '.</div>' : '')
+      + '<button type="button" class="btn-primary" data-action="link-barcode-sel" data-code="' + escapeAttr(code) + '">Vincular y ' + (salidaLibre ? 'contar' : 'marcar como recibido') + '</button>'
+      + '</div>';
+  }
+
   if(pending.length > 0){
     const optionsHtml = pending.map(x =>
-      '<option value="' + x.idx + '">' + escapeAttr(x.i.code) + ' - ' + escapeAttr(x.i.name) + '</option>'
+      '<option value="' + x.idx + '"' + (selOk && x.idx === pickSelIdx ? ' selected' : '') + '>' + escapeAttr(x.i.code) + ' - ' + escapeAttr(x.i.name) + '</option>'
     ).join('');
-    html += '<div style="margin-top:8px;">'
-      + '<label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">' + (salidaLibre ? '¿Es el código de barras de un producto de la lista?' : '¿Es el código de barras de un producto de este pedido?') + '</label>'
+    html += '<div style="margin-top:8px;' + (selOk ? ' border-top:1px solid var(--border); padding-top:8px;' : '') + '">'
+      + '<label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">' + (selOk ? '¿Es de otro producto? ' : '') + (salidaLibre ? '¿Es el código de barras de un producto de la lista?' : '¿Es el código de barras de un producto de este pedido?')
+      + (useAll ? (noBc.length === 0 ? ' (todos ya tienen código de barras)' : '') : ' (solo los que aún no tienen código de barras: ' + noBc.length + ')') + '</label>'
       + '<select id="link-barcode-select" style="margin-bottom:6px;">' + optionsHtml + '</select>'
       + '<button type="button" data-action="link-barcode" data-code="' + escapeAttr(code) + '">' + (salidaLibre ? 'Vincular y contar' : 'Vincular y marcar como recibido') + '</button>'
+      + (noBc.length > 0 && allLines.length > noBc.length ? ' <button type="button" data-action="toggle-link-all" data-code="' + escapeAttr(code) + '">' + (pickLinkAll ? 'Solo los que faltan' : 'Ver todos') + '</button>' : '')
       + '</div>';
   }
 
@@ -2199,27 +2240,43 @@ function handleScan(raw){
   updateStats();
 }
 
+// V2.14: vincula un código de barras a la línea idx del pedido (lo guarda en el catálogo y cuenta una unidad/paquete)
+function pickLinkBarcode(barcode, idx){
+  const item = pickItems[idx];
+  if(!item || item.code === SIN_CODIGO || !barcode) return;
+  const targetCode = item.code;
+  pendingUnknownCode = null;
+  pickSelIdx = null;
+  linkBarcodeToProduct(barcode, targetCode);
+  upsertProduct(targetCode, item.name, '');
+  saveProductCatalog();
+  item.picked += getPackSize(targetCode);
+  renderPickRows();
+  updateStats();
+  const nBarcodes = ((productCatalog[targetCode] || {}).barcodes || []).length;
+  setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + (salidaLibre ? 'van ' + item.picked : item.picked + '/' + item.qty) + '). La próxima vez que escanees este código, ya lo va a reconocer solo.'
+    + (nBarcodes > 1 ? ' ⚠ Ojo: este producto ahora tiene ' + nBarcodes + ' códigos de barras. Si no es correcto, quítalo en Catálogo.' : ''),
+    nBarcodes > 1 ? 'var(--warning-text)' : 'var(--success-text)');
+  showFeedbackThumb(targetCode);
+}
+
 document.getElementById('feedback-action').addEventListener('click', function(e){
   const linkBtn = e.target.closest('button[data-action="link-barcode"]');
   if(linkBtn){
-    const barcode = linkBtn.getAttribute('data-code');
     const select = document.getElementById('link-barcode-select');
-    const item = select ? pickItems[parseInt(select.value, 10)] : null; // V2.11: por posición
-    if(!item || item.code === SIN_CODIGO) return;
-    const targetCode = item.code;
-    pendingUnknownCode = null;
-    linkBarcodeToProduct(barcode, targetCode);
-    if(item){
-      upsertProduct(targetCode, item.name, '');
-      saveProductCatalog();
-      item.picked += getPackSize(targetCode);
-      renderPickRows();
-      updateStats();
-      const nBarcodes = ((productCatalog[targetCode] || {}).barcodes || []).length;
-      setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + (salidaLibre ? 'van ' + item.picked : item.picked + '/' + item.qty) + '). La próxima vez que escanees este código, ya lo va a reconocer solo.'
-        + (nBarcodes > 1 ? ' ⚠ Ojo: este producto ahora tiene ' + nBarcodes + ' códigos de barras. Si no es correcto, quítalo en Catálogo.' : ''),
-        nBarcodes > 1 ? 'var(--warning-text)' : 'var(--success-text)');
-    }
+    if(select) pickLinkBarcode(linkBtn.getAttribute('data-code'), parseInt(select.value, 10));
+    return;
+  }
+  // V2.14: vincular al producto elegido (tocando su tarjeta)
+  const linkSelBtn = e.target.closest('button[data-action="link-barcode-sel"]');
+  if(linkSelBtn){
+    if(pickSelIdx !== null) pickLinkBarcode(linkSelBtn.getAttribute('data-code'), pickSelIdx);
+    return;
+  }
+  const toggleAllBtn = e.target.closest('button[data-action="toggle-link-all"]');
+  if(toggleAllBtn){
+    pickLinkAll = !pickLinkAll;
+    showUnknownCodeUI(toggleAllBtn.getAttribute('data-code'), 1);
     return;
   }
 
@@ -2795,7 +2852,7 @@ function renderInicioStats(){
 function exportBackup(){
   const backup = {
     app: 'verificador_pedidos_rios_performance',
-    version: 'V2.13',
+    version: 'V2.14',
     exportedAt: Date.now(),
     inventario: { stock: invStock, activo: invAct, cerrados: invCer },
     productCatalog: productCatalog,
